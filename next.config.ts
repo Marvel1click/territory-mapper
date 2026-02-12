@@ -80,8 +80,10 @@ const nextConfig: NextConfig = {
     ],
     unoptimized: true,
   },
-  // Empty turbopack config to satisfy Next.js 16 requirement
-  turbopack: {},
+  // Set turbopack root to this project directory (prevents wrong workspace root inference)
+  turbopack: {
+    root: import.meta.dirname,
+  },
   // Webpack optimization (used during --webpack builds and by next-pwa)
   webpack: (config, { isServer, dev }) => {
     // Optimize bundle size
@@ -134,9 +136,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   // Experimental features
-  experimental: {
-    optimizeCss: true,
-  },
+  experimental: {},
 };
 
 // Wrap config with PWA support
