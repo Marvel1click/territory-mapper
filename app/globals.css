@@ -1,165 +1,6 @@
 @import "tailwindcss";
 @source "../";
 
-:root {
-  /* Light Mode (Default) */
-  --background: #ffffff;
-  --foreground: #171717;
-  --card: #ffffff;
-  --card-foreground: #171717;
-  --popover: #ffffff;
-  --popover-foreground: #171717;
-  --primary: #0066cc;
-  --primary-foreground: #ffffff;
-  --secondary: #f3f4f6;
-  --secondary-foreground: #1f2937;
-  --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
-  --accent: #f3f4f6;
-  --accent-foreground: #1f2937;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #0066cc;
-  --radius: 0.5rem;
-  
-  /* Territory-specific colors */
-  --territory-in-stock: #22c55e;
-  --territory-out: #f59e0b;
-  --territory-boundary: #3b82f6;
-  --house-nah: #6b7280;
-  --house-interest: #10b981;
-  --house-return-visit: #8b5cf6;
-  --house-dnc: #dc2626;
-  
-  /* Map styles */
-  --map-water: #e0f2fe;
-  --map-land: #f8fafc;
-  --map-road: #ffffff;
-  
-  /* Font sizes (normal mode) */
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
-  
-  /* Touch targets (normal mode) */
-  --touch-target-sm: 2.5rem;
-  --touch-target-md: 2.75rem;
-  --touch-target-lg: 3rem;
-  --touch-target-xl: 3.5rem;
-}
-
-/* Dark Mode - auto via system preference */
-@media (prefers-color-scheme: dark) {
-  html:not(.light) {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --card: #171717;
-    --card-foreground: #ededed;
-    --popover: #171717;
-    --popover-foreground: #ededed;
-    --primary: #3b82f6;
-    --primary-foreground: #ffffff;
-    --secondary: #262626;
-    --secondary-foreground: #fafafa;
-    --muted: #262626;
-    --muted-foreground: #a1a1aa;
-    --accent: #262626;
-    --accent-foreground: #fafafa;
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
-    --border: #262626;
-    --input: #262626;
-    --ring: #3b82f6;
-
-    --map-water: #1e293b;
-    --map-land: #0f172a;
-    --map-road: #334155;
-  }
-}
-
-/* Dark Mode - explicit toggle */
-.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  --card: #171717;
-  --card-foreground: #ededed;
-  --popover: #171717;
-  --popover-foreground: #ededed;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --secondary: #262626;
-  --secondary-foreground: #fafafa;
-  --muted: #262626;
-  --muted-foreground: #a1a1aa;
-  --accent: #262626;
-  --accent-foreground: #fafafa;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #262626;
-  --input: #262626;
-  --ring: #3b82f6;
-  
-  /* Map styles - dark */
-  --map-water: #1e293b;
-  --map-land: #0f172a;
-  --map-road: #334155;
-}
-
-/* High Contrast Mode */
-.high-contrast {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #000000;
-  --card-foreground: #ffffff;
-  --popover: #000000;
-  --popover-foreground: #ffffff;
-  --primary: #ffff00;
-  --primary-foreground: #000000;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ffffff;
-  --muted: #1a1a1a;
-  --muted-foreground: #ffffff;
-  --accent: #ffff00;
-  --accent-foreground: #000000;
-  --destructive: #ff0000;
-  --destructive-foreground: #ffffff;
-  --border: #ffffff;
-  --input: #ffffff;
-  --ring: #ffff00;
-  
-  /* Territory colors - high contrast */
-  --territory-in-stock: #00ff00;
-  --territory-out: #ffff00;
-  --territory-boundary: #00ffff;
-  --house-nah: #808080;
-  --house-interest: #00ff00;
-  --house-return-visit: #ff00ff;
-  --house-dnc: #ff0000;
-}
-
-/* Big Mode (Accessibility) - Larger touch targets and fonts */
-.big-mode {
-  --font-size-xs: 1rem;
-  --font-size-sm: 1.125rem;
-  --font-size-base: 1.25rem;
-  --font-size-lg: 1.5rem;
-  --font-size-xl: 1.875rem;
-  --font-size-2xl: 2.25rem;
-  --font-size-3xl: 3rem;
-  
-  --touch-target-sm: 3rem;
-  --touch-target-md: 4rem;
-  --touch-target-lg: 5rem;
-  --touch-target-xl: 6rem;
-  --radius: 1rem;
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -187,232 +28,336 @@
   --font-mono: var(--font-geist-mono);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@layer base {
+  :root {
+    /* Light Mode (Default) */
+    --background: #ffffff;
+    --foreground: #171717;
+    --card: #ffffff;
+    --card-foreground: #171717;
+    --popover: #ffffff;
+    --popover-foreground: #171717;
+    --primary: #0066cc;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f4f6;
+    --secondary-foreground: #1f2937;
+    --muted: #f3f4f6;
+    --muted-foreground: #6b7280;
+    --accent: #f3f4f6;
+    --accent-foreground: #1f2937;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #e5e7eb;
+    --input: #e5e7eb;
+    --ring: #0066cc;
+    --radius: 0.5rem;
 
-html {
-  scroll-behavior: smooth;
-}
+    /* Territory-specific colors */
+    --territory-in-stock: #22c55e;
+    --territory-out: #f59e0b;
+    --territory-boundary: #3b82f6;
+    --house-nah: #6b7280;
+    --house-interest: #10b981;
+    --house-return-visit: #8b5cf6;
+    --house-dnc: #dc2626;
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: var(--font-size-base);
-  line-height: 1.5;
-  min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+    /* Map styles */
+    --map-water: #e0f2fe;
+    --map-land: #f8fafc;
+    --map-road: #ffffff;
 
-/* Big Mode body font */
-.big-mode body {
-  font-size: var(--font-size-lg);
-  line-height: 1.6;
-}
+    /* Font sizes (normal mode) */
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
 
-/* Improved spacing for Big Mode */
-.big-mode h1 { font-size: var(--font-size-3xl); }
-.big-mode h2 { font-size: var(--font-size-2xl); }
-.big-mode h3 { font-size: var(--font-size-xl); }
-.big-mode h4 { font-size: var(--font-size-lg); }
-
-.big-mode p,
-.big-mode span,
-.big-mode div {
-  line-height: 1.6;
-}
-
-/* Ensure proper focus visibility for accessibility */
-*:focus {
-  outline: none;
-}
-
-*:focus-visible {
-  outline: 3px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: var(--radius);
-}
-
-/* High contrast mode improvements */
-.high-contrast *:focus-visible {
-  outline: 4px solid var(--ring);
-  outline-offset: 4px;
-}
-
-.high-contrast .border,
-.high-contrast .border-border,
-.high-contrast [class*='border-'] {
-  border-width: 2px !important;
-}
-
-/* Improved touch targets for mobile */
-@media (max-width: 768px) {
-  button,
-  a,
-  input,
-  select,
-  textarea,
-  [role='button'] {
-    min-height: 44px;
-    min-width: 44px;
+    /* Touch targets (normal mode) */
+    --touch-target-sm: 2.5rem;
+    --touch-target-md: 2.75rem;
+    --touch-target-lg: 3rem;
+    --touch-target-xl: 3.5rem;
   }
-  
-  /* Larger padding on mobile for better touch */
-  .px-4 {
-    padding-left: 1rem;
-    padding-right: 1rem;
+
+  /* Dark Mode - auto via system preference */
+  @media (prefers-color-scheme: dark) {
+    html:not(.light) {
+      --background: #0a0a0a;
+      --foreground: #ededed;
+      --card: #171717;
+      --card-foreground: #ededed;
+      --popover: #171717;
+      --popover-foreground: #ededed;
+      --primary: #3b82f6;
+      --primary-foreground: #ffffff;
+      --secondary: #262626;
+      --secondary-foreground: #fafafa;
+      --muted: #262626;
+      --muted-foreground: #a1a1aa;
+      --accent: #262626;
+      --accent-foreground: #fafafa;
+      --destructive: #ef4444;
+      --destructive-foreground: #ffffff;
+      --border: #262626;
+      --input: #262626;
+      --ring: #3b82f6;
+
+      --map-water: #1e293b;
+      --map-land: #0f172a;
+      --map-road: #334155;
+    }
   }
-  
-  .py-3 {
-    padding-top: 0.875rem;
-    padding-bottom: 0.875rem;
+
+  /* Dark Mode - explicit toggle */
+  .dark {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --card: #171717;
+    --card-foreground: #ededed;
+    --popover: #171717;
+    --popover-foreground: #ededed;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
+    --secondary: #262626;
+    --secondary-foreground: #fafafa;
+    --muted: #262626;
+    --muted-foreground: #a1a1aa;
+    --accent: #262626;
+    --accent-foreground: #fafafa;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #262626;
+    --input: #262626;
+    --ring: #3b82f6;
+
+    /* Map styles - dark */
+    --map-water: #1e293b;
+    --map-land: #0f172a;
+    --map-road: #334155;
   }
-}
 
-/* Ensure images don't overflow */
-img {
-  max-width: 100%;
-  height: auto;
-}
+  /* High Contrast Mode */
+  .high-contrast {
+    --background: #000000;
+    --foreground: #ffffff;
+    --card: #000000;
+    --card-foreground: #ffffff;
+    --popover: #000000;
+    --popover-foreground: #ffffff;
+    --primary: #ffff00;
+    --primary-foreground: #000000;
+    --secondary: #1a1a1a;
+    --secondary-foreground: #ffffff;
+    --muted: #1a1a1a;
+    --muted-foreground: #ffffff;
+    --accent: #ffff00;
+    --accent-foreground: #000000;
+    --destructive: #ff0000;
+    --destructive-foreground: #ffffff;
+    --border: #ffffff;
+    --input: #ffffff;
+    --ring: #ffff00;
 
-/* Consistent heading spacing */
-h1, h2, h3, h4, h5, h6 {
-  margin-top: 0;
-  margin-bottom: 0.5em;
-  font-weight: 600;
-  line-height: 1.2;
-}
+    /* Territory colors - high contrast */
+    --territory-in-stock: #00ff00;
+    --territory-out: #ffff00;
+    --territory-boundary: #00ffff;
+    --house-nah: #808080;
+    --house-interest: #00ff00;
+    --house-return-visit: #ff00ff;
+    --house-dnc: #ff0000;
+  }
 
-/* Paragraph spacing */
-p {
-  margin-bottom: 1em;
-}
+  /* Big Mode (Accessibility) - Larger touch targets and fonts */
+  .big-mode {
+    --font-size-xs: 1rem;
+    --font-size-sm: 1.125rem;
+    --font-size-base: 1.25rem;
+    --font-size-lg: 1.5rem;
+    --font-size-xl: 1.875rem;
+    --font-size-2xl: 2.25rem;
+    --font-size-3xl: 3rem;
 
-p:last-child {
-  margin-bottom: 0;
-}
+    --touch-target-sm: 3rem;
+    --touch-target-md: 4rem;
+    --touch-target-lg: 5rem;
+    --touch-target-xl: 6rem;
+    --radius: 1rem;
+  }
 
-/* Utility Classes for Big Mode */
-.big-mode .btn-touch {
-  min-height: var(--touch-target-lg);
-  min-width: var(--touch-target-lg);
-  padding: 1rem 1.5rem;
-  font-size: var(--font-size-lg);
-}
+  html {
+    scroll-behavior: smooth;
+  }
 
-.big-mode .input-touch {
-  min-height: var(--touch-target-lg);
-  font-size: var(--font-size-lg);
-  padding: 1rem;
-}
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: var(--font-size-base);
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-/* High Contrast focus styles */
-.high-contrast *:focus-visible {
-  outline: 4px solid var(--ring);
-  outline-offset: 4px;
-}
+  /* Big Mode body font */
+  .big-mode body {
+    font-size: var(--font-size-lg);
+    line-height: 1.6;
+  }
 
-/* Glassmorphism effects (Phase 4) */
-.glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
+  /* Improved spacing for Big Mode */
+  .big-mode h1 { font-size: var(--font-size-3xl); }
+  .big-mode h2 { font-size: var(--font-size-2xl); }
+  .big-mode h3 { font-size: var(--font-size-xl); }
+  .big-mode h4 { font-size: var(--font-size-lg); }
 
-.dark .glass {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
+  .big-mode p,
+  .big-mode span,
+  .big-mode div {
+    line-height: 1.6;
+  }
 
-/* Neon accents for Phase 4 */
-.neon-border {
-  box-shadow: 0 0 10px var(--territory-boundary), 
-              0 0 20px var(--territory-boundary),
-              0 0 30px var(--territory-boundary);
-}
+  /* Ensure proper focus visibility for accessibility */
+  *:focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+  }
 
-/* Map container styles */
-.map-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
+  /* High contrast mode improvements */
+  .high-contrast *:focus-visible {
+    outline: 4px solid var(--ring);
+    outline-offset: 4px;
+  }
 
-/* Hide Mapbox attribution for cleaner UI (optional, check licensing) */
-.mapboxgl-ctrl-bottom-right {
-  opacity: 0.7;
-}
+  .high-contrast .border,
+  .high-contrast .border-border,
+  .high-contrast [class*='border-'] {
+    border-width: 2px !important;
+  }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+  /* Ensure images don't overflow */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
 
-::-webkit-scrollbar-track {
-  background: var(--muted);
-}
+  /* Utility Classes for Big Mode */
+  .big-mode .btn-touch {
+    min-height: var(--touch-target-lg);
+    min-width: var(--touch-target-lg);
+    padding: 1rem 1.5rem;
+    font-size: var(--font-size-lg);
+  }
 
-::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: 4px;
-}
+  .big-mode .input-touch {
+    min-height: var(--touch-target-lg);
+    font-size: var(--font-size-lg);
+    padding: 1rem;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
-}
+  /* Glassmorphism effects */
+  .glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
 
-/* Thin scrollbar utility */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
+  .dark .glass {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
 
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
+  /* Neon accents */
+  .neon-border {
+    box-shadow: 0 0 10px var(--territory-boundary),
+                0 0 20px var(--territory-boundary),
+                0 0 30px var(--territory-boundary);
+  }
 
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: 2px;
-}
+  /* Map container styles */
+  .map-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
 
-/* Hide scrollbar but allow scrolling */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+  /* Hide Mapbox attribution for cleaner UI */
+  .mapboxgl-ctrl-bottom-right {
+    opacity: 0.7;
+  }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-/* Touch action optimization for mobile */
-button, a, input, select, textarea {
-  touch-action: manipulation;
-}
+  ::-webkit-scrollbar-track {
+    background: var(--muted);
+  }
 
-/* Prevent text selection on UI elements */
-.no-select {
-  user-select: none;
-  -webkit-user-select: none;
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 4px;
+  }
 
-/* Safe area padding for notched devices */
-.safe-area-top {
-  padding-top: env(safe-area-inset-top);
-}
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--foreground);
+  }
 
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
+  /* Thin scrollbar utility */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
 
-.safe-area-x {
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 2px;
+  }
+
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Touch action optimization for mobile */
+  button, a, input, select, textarea {
+    touch-action: manipulation;
+  }
+
+  /* Prevent text selection on UI elements */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Safe area padding for notched devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }
