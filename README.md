@@ -1,36 +1,136 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Territory Mapper
+
+A Progressive Web App (PWA) for door-to-door ministry territory management. Built with offline-first architecture, accessibility features, and privacy-focused design.
+
+## Features
+
+### Phase 1: The Bedrock ✅
+- ✅ Next.js 14 PWA with offline support
+- ✅ Mapbox GL JS integration
+- ✅ RxDB for local data storage
+- ✅ Supabase Auth with congregation isolation
+- ✅ High-contrast accessibility mode
+
+### Phase 2: The Overseer Tools
+- 🚧 Territory boundary editor
+- 🚧 Assignment dashboard
+- 🚧 QR code generation for checkouts
+
+### Phase 3: The Publisher Experience
+- 🚧 House-to-house tracking
+- ✅ Big Mode UI for accessibility
+- 🚧 Haptic feedback for DNC proximity
+- 🚧 Voice-to-text notes
+
+### Phase 4: Sync & Polish
+- 🚧 Background sync
+- ✅ Dark mode support
+- 🚧 Glassmorphism UI
+- 🚧 AES-256 encryption for DNC addresses
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS v4
+- **Database**: RxDB (client-side) + Supabase (server-side)
+- **Auth**: Supabase Auth
+- **Maps**: Mapbox GL JS
+- **State**: Zustand
+- **PWA**: next-pwa
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- npm or yarn
+- Supabase account
+- Mapbox account
+
+### Environment Variables
+
+Create a `.env.local` file:
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Mapbox
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
+
+# Encryption
+DNC_ENCRYPTION_KEY=your_secure_key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Install dependencies
+npm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Run development server
+npm run dev
 
-## Learn More
+# Build for production
+npm run build
 
-To learn more about Next.js, take a look at the following resources:
+# Start production server
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Development
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Project Structure
 
-## Deploy on Vercel
+```
+territory-mapper/
+├── app/
+│   ├── (auth)/           # Auth routes (login, register)
+│   ├── (dashboard)/       # Protected dashboard routes
+│   ├── api/               # API routes
+│   ├── components/        # React components
+│   ├── hooks/             # Custom React hooks
+│   ├── lib/               # Utilities and configurations
+│   └── types/             # TypeScript types
+├── public/                # Static assets and PWA files
+└── supabase/              # Database migrations
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Key Features
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+#### Offline-First Architecture
+- RxDB stores all data locally in IndexedDB
+- Automatic sync with Supabase when online
+- Background sync queue for pending changes
+
+#### Accessibility
+- High contrast mode for low vision users
+- Big Mode with enlarged touch targets (≥64dp)
+- Haptic feedback for DNC proximity warnings
+- Voice-to-text for notes
+- Full keyboard navigation support
+
+#### Privacy & Security
+- Congregation-level data isolation via RLS
+- AES-256 encryption for DNC addresses
+- No tracking or analytics
+- Local-first data storage
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Acknowledgments
+
+Built for the ministry. Thank you to all who serve.

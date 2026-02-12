@@ -1,65 +1,140 @@
-import Image from "next/image";
+import Link from "next/link";
+import { MapPin, Shield, WifiOff, Accessibility } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="min-h-screen flex flex-col">
+      {/* Hero Section */}
+      <main className="flex-1">
+        <section className="py-20 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="flex justify-center mb-8">
+              <div className="p-4 bg-primary/10 rounded-2xl">
+                <MapPin className="w-16 h-16 text-primary" />
+              </div>
+            </div>
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
+              Territory Mapper
+            </h1>
+            
+            <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+              Modern territory management for door-to-door ministry. 
+              Works offline, protects privacy, and puts accessibility first.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                href="/login"
+                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Get Started
+              </Link>
+              <Link
+                href="/register"
+                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl border-2 border-border hover:bg-accent transition-colors"
+              >
+                Create Account
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Features Section */}
+        <section className="py-20 bg-muted/50">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold text-center mb-16">
+              Built for the Field
+            </h2>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              <FeatureCard
+                icon={<WifiOff className="w-8 h-8" />}
+                title="Works Offline"
+                description="Full functionality without internet. Your data stays on your device until you're back online."
+              />
+              <FeatureCard
+                icon={<Shield className="w-8 h-8" />}
+                title="Privacy First"
+                description="Do Not Call addresses are encrypted. Congregation data is completely isolated."
+              />
+              <FeatureCard
+                icon={<Accessibility className="w-8 h-8" />}
+                title="Accessible Design"
+                description="Big Mode for low vision, high contrast themes, and haptic feedback support."
+              />
+              <FeatureCard
+                icon={<MapPin className="w-8 h-8" />}
+                title="Smart Maps"
+                description="Draw territory boundaries, track house visits, and get DNC proximity warnings."
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section className="py-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold text-center mb-16">
+              How It Works
+            </h2>
+            
+            <div className="space-y-12">
+              <Step
+                number={1}
+                title="Overseer Creates Territories"
+                description="Draw territory boundaries on the map, add house data, and manage assignments."
+              />
+              <Step
+                number={2}
+                title="Generate QR Codes"
+                description="Create unique QR codes for each territory that publishers can scan to check out."
+              />
+              <Step
+                number={3}
+                title="Publishers Work Offline"
+                description="Scan a QR code to download territory data. Track visits, take voice notes, all offline."
+              />
+              <Step
+                number={4}
+                title="Automatic Sync"
+                description="When back on Wi-Fi, all changes sync automatically to the congregation database."
+              />
+            </div>
+          </div>
+        </section>
       </main>
+
+      {/* Footer */}
+      <footer className="py-8 border-t">
+        <div className="max-w-6xl mx-auto px-4 text-center text-muted-foreground">
+          <p>© 2026 Territory Mapper. Built for the ministry.</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+  return (
+    <div className="p-6 bg-card rounded-xl border border-border hover:shadow-lg transition-shadow">
+      <div className="text-primary mb-4">{icon}</div>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-muted-foreground text-sm">{description}</p>
+    </div>
+  );
+}
+
+function Step({ number, title, description }: { number: number; title: string; description: string }) {
+  return (
+    <div className="flex gap-6">
+      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xl font-bold">
+        {number}
+      </div>
+      <div>
+        <h3 className="text-xl font-semibold mb-2">{title}</h3>
+        <p className="text-muted-foreground">{description}</p>
+      </div>
     </div>
   );
 }

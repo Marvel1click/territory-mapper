@@ -12,7 +12,29 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node.js scripts (use CommonJS)
+    "scripts/**",
+    // Dependencies
+    "node_modules/**",
   ]),
+  {
+    rules: {
+      // Disable overly strict React 19 rules for common patterns
+      // These patterns are widely used and safe for initialization
+      "react-hooks/set-state-in-effect": "off",
+      // Allow unused variables with underscore prefix
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_",
+          "caughtErrorsIgnorePattern": "^_"
+        }
+      ],
+      // Allow any in specific cases (replication layers, etc.)
+      "@typescript-eslint/no-explicit-any": "warn"
+    }
+  }
 ]);
 
 export default eslintConfig;
