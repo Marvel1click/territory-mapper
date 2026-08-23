@@ -1206,9 +1206,12 @@ CREATE POLICY activity_read_privileged ON activity_log FOR SELECT TO authenticat
 
 REVOKE ALL ON TABLE profiles, congregation_memberships, congregation_invites, visits,
   dnc_records, checkout_links FROM anon, authenticated;
+REVOKE ALL ON TABLE congregations, territories, houses, assignments FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON activity_log FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON assignments FROM anon, authenticated;
 
+GRANT SELECT ON congregations TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON territories, houses TO authenticated;
+GRANT SELECT ON assignments TO authenticated;
 GRANT SELECT, UPDATE (full_name, phone, updated_at) ON profiles TO authenticated;
 GRANT SELECT ON congregation_memberships TO authenticated;
 GRANT SELECT ON congregation_invites TO authenticated;
