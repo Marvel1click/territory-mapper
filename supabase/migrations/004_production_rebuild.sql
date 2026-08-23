@@ -340,13 +340,13 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$ SELECT has_role(ARRAY['admin', 'overseer']) $$;
 
-CREATE OR REPLACE FUNCTION is_user_in_congregation(target_congregation_id UUID)
+CREATE OR REPLACE FUNCTION is_user_in_congregation(p_congregation_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $$ SELECT current_congregation_id() = target_congregation_id $$;
+AS $$ SELECT current_congregation_id() = p_congregation_id $$;
 
 REVOKE ALL ON FUNCTION set_user_congregation_claim(UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION create_congregation(TEXT, UUID) FROM PUBLIC, anon, authenticated;
