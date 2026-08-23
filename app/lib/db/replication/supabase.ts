@@ -1,389 +1,297 @@
-/**
- * RxDB to Supabase Replication Layer
- * 
- * This module handles bidirectional sync between the local RxDB database
- * and the Supabase PostgreSQL database.
- */
-
-import { type RxCollection } from 'rxdb';
-import { supabase } from '../supabase/client';
+import {
+  replicateRxCollection,
+  type RxReplicationState,
+} from 'rxdb/plugins/replication';
+import type { RxReplicationWriteToMasterRow } from 'rxdb';
+import type {
+  ReplicatedCollection,
+  ReplicationConflict,
+  ReplicationDocument,
+  SyncCheckpoint,
+} from '@/app/types';
+import type {
+  LocalDocument,
+  TerritoryDatabase,
+} from '@/app/lib/db/rxdb';
 import { logger } from '@/app/lib/utils/logger';
-import type { TerritoryDatabase } from '../rxdb';
+import { useSyncStore } from '@/app/lib/store';
 
-// Replication state
-interface ReplicationState {
-  isActive: boolean;
-  lastSync: string | null;
-  pendingChanges: number;
+type ReplicationCollection = 'territories' | 'houses' | 'assignments' | 'visits';
+
+interface PullResponse {
+  documents: ReplicationDocument[];
+  checkpoint: SyncCheckpoint | null;
+}
+
+interface PushResponse {
+  documents: ReplicationDocument[];
+  conflicts: ReplicationConflict[];
+}
+
+export interface CollectionReplicationStatus {
+  active: boolean;
+  received: number;
+  sent: number;
+  conflicts: number;
   error: string | null;
+  lastSuccessfulSync: string | null;
 }
 
-// Document from Supabase replication
-interface ReplicationDoc {
-  id: string;
-  updated_at: string;
-  [key: string]: unknown;
+const collectionFields: Record<ReplicationCollection, readonly string[]> = {
+  territories: [
+    'id', 'name', 'description', 'congregation_id', 'boundary', 'center', 'status',
+    'color', 'created_by', 'created_at', 'updated_at', 'version',
+    'server_updated_at', 'deleted_at', 'last_mutation_id',
+  ],
+  houses: [
+    'id', 'territory_id', 'congregation_id', 'address', 'coordinates', 'status',
+    'notes', 'is_dnc', 'last_visited', 'last_visitor', 'return_visit_date',
+    'created_at', 'updated_at', 'version', 'server_updated_at', 'deleted_at',
+    'last_mutation_id',
+  ],
+  assignments: [
+    'id', 'territory_id', 'publisher_id', 'publisher_name', 'congregation_id',
+    'checked_out_at', 'checked_out_by', 'due_date', 'returned_at', 'status',
+    'created_at', 'updated_at', 'version', 'server_updated_at', 'deleted_at',
+    'last_mutation_id',
+  ],
+  visits: [
+    'id', 'house_id', 'territory_id', 'congregation_id', 'visitor_id', 'outcome',
+    'notes', 'visited_at', 'follow_up_at', 'mutation_id', 'created_at', 'version',
+    'server_updated_at', 'deleted_at',
+  ],
+};
+
+const statuses = new Map<ReplicationCollection, CollectionReplicationStatus>();
+const stateBundles = new WeakMap<TerritoryDatabase, ReplicationBundle>();
+
+interface ReplicationBundle {
+  states: Map<ReplicationCollection, RxReplicationState<LocalDocument, SyncCheckpoint>>;
+  interval: ReturnType<typeof setInterval>;
+  cleanupListeners: () => void;
+  references: number;
 }
 
-// Realtime payload types
-type RealtimeEventType = 'INSERT' | 'UPDATE' | 'DELETE';
-
-interface RealtimePayload<T = Record<string, unknown>> {
-  eventType: RealtimeEventType;
-  new: T;
-  old: { id: string };
+function getStatus(collection: ReplicationCollection): CollectionReplicationStatus {
+  const existing = statuses.get(collection);
+  if (existing) return existing;
+  const status: CollectionReplicationStatus = {
+    active: false,
+    received: 0,
+    sent: 0,
+    conflicts: 0,
+    error: null,
+    lastSuccessfulSync: null,
+  };
+  statuses.set(collection, status);
+  return status;
 }
 
-// Type guard for payload validation
-function isValidPayload(payload: unknown): payload is RealtimePayload {
-  if (typeof payload !== 'object' || payload === null) return false;
-  const p = payload as Record<string, unknown>;
-  return (
-    typeof p.eventType === 'string' &&
-    ['INSERT', 'UPDATE', 'DELETE'].includes(p.eventType) &&
-    typeof p.new === 'object' &&
-    (p.old === undefined || typeof p.old === 'object')
-  );
-}
-
-const replicationStates = new Map<string, ReplicationState>();
-
-// Get or create replication state for a collection
-function getReplicationState(collectionName: string): ReplicationState {
-  if (!replicationStates.has(collectionName)) {
-    replicationStates.set(collectionName, {
-      isActive: false,
-      lastSync: null,
-      pendingChanges: 0,
-      error: null,
-    });
+function toLocalDocument(
+  collection: ReplicationCollection,
+  serverDocument: ReplicationDocument,
+): LocalDocument {
+  const local: Record<string, unknown> = {};
+  for (const key of collectionFields[collection]) {
+    if (key in serverDocument) local[key] = serverDocument[key];
   }
-  return replicationStates.get(collectionName)!;
+  local._deleted = Boolean(serverDocument.deleted_at);
+  return local as LocalDocument;
 }
 
-/**
- * Pull changes from Supabase to RxDB
- */
-export async function pullFromSupabase(
-  db: TerritoryDatabase,
-  collectionName: 'territories' | 'houses' | 'assignments',
-  congregationId: string,
-  since?: string
-): Promise<number> {
-  try {
-    const state = getReplicationState(collectionName);
-    state.isActive = true;
-
-    // Build query
-    let query = supabase
-      .from(collectionName)
-      .select('*')
-      .eq('congregation_id', congregationId);
-
-    // If we have a last sync time, only get records updated since then
-    if (since) {
-      query = query.gt('updated_at', since);
+function toPushRow(
+  collection: ReplicationCollection,
+  row: RxReplicationWriteToMasterRow<LocalDocument>,
+): {
+  newDocumentState: Record<string, unknown>;
+  assumedMasterState: Record<string, unknown> | null;
+} {
+  const serialize = (document: LocalDocument | undefined): Record<string, unknown> | null => {
+    if (!document) return null;
+    const serialized: Record<string, unknown> = {};
+    for (const key of [...collectionFields[collection], '_deleted']) {
+      if (key in document) serialized[key] = document[key];
     }
-
-    const { data, error } = await query.order('updated_at', { ascending: true });
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
-      state.isActive = false;
-      return 0;
-    }
-
-    // Insert or update records in RxDB
-    const collection = db[collectionName] as RxCollection;
-    const docs = data as ReplicationDoc[];
-
-    for (const doc of docs) {
-      try {
-        // Check if document exists
-        const existing = await collection.findOne(doc.id).exec();
-        
-        if (existing) {
-          // Update if server version is newer
-          const serverTime = new Date(doc.updated_at).getTime();
-          const localTime = new Date(existing.updated_at).getTime();
-          
-          if (serverTime > localTime) {
-            await existing.update({ $set: doc });
-          }
-        } else {
-          // Insert new document
-          await collection.insert(doc);
-        }
-      } catch (err) {
-        logger.error(`[Replication] Error processing ${collectionName} doc ${doc.id}:`, err);
-      }
-    }
-
-    // Update last sync time
-    const lastUpdated = docs[docs.length - 1]?.updated_at;
-    if (lastUpdated) {
-      state.lastSync = lastUpdated;
-    }
-
-    state.isActive = false;
-    return docs.length;
-  } catch (error) {
-    const state = getReplicationState(collectionName);
-    state.isActive = false;
-    state.error = error instanceof Error ? error.message : 'Unknown error';
-    logger.error(`[Replication] Pull error for ${collectionName}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Push changes from RxDB to Supabase
- */
-export async function pushToSupabase(
-  db: TerritoryDatabase,
-  collectionName: 'territories' | 'houses' | 'assignments',
-  congregationId: string
-): Promise<number> {
-  try {
-    const state = getReplicationState(collectionName);
-    state.isActive = true;
-
-    const collection = db[collectionName] as RxCollection;
-    
-    // Get all documents that need to be synced
-    // For simplicity, we sync all documents modified since last sync
-    const since = state.lastSync;
-    
-    const query = collection.find({
-      selector: { congregation_id: congregationId },
-    });
-
-    const docs = await query.exec();
-    
-    // Filter for documents that need syncing
-    const docsToSync = since 
-      ? docs.filter((doc: { updated_at?: string }) => new Date(doc.updated_at || 0) > new Date(since))
-      : docs;
-
-    if (docsToSync.length === 0) {
-      state.isActive = false;
-      return 0;
-    }
-
-    // Convert to plain objects for Supabase
-    const records = docsToSync.map((doc: { toJSON?: () => Record<string, unknown> }) => {
-      const data = doc.toJSON ? doc.toJSON() : (doc as Record<string, unknown>);
-      // Remove RxDB internal fields
-      delete data._rev;
-      delete data._attachments;
-      delete data._meta;
-      return data;
-    });
-
-    // Upsert to Supabase
-    const { error } = await supabase
-      .from(collectionName)
-      .upsert(records, { 
-        onConflict: 'id',
-        ignoreDuplicates: false 
-      });
-
-    if (error) {
-      throw error;
-    }
-
-    // Update last sync time
-    const lastRecord = records[records.length - 1];
-    if (lastRecord?.updated_at && typeof lastRecord.updated_at === 'string') {
-      state.lastSync = lastRecord.updated_at;
-    }
-
-    state.pendingChanges = 0;
-    state.isActive = false;
-    return records.length;
-  } catch (error) {
-    const state = getReplicationState(collectionName);
-    state.isActive = false;
-    state.error = error instanceof Error ? error.message : 'Unknown error';
-    logger.error(`[Replication] Push error for ${collectionName}:`, error);
-    throw error;
-  }
-}
-
-/**
- * Bidirectional sync - pull then push
- */
-export async function syncCollection(
-  db: TerritoryDatabase,
-  collectionName: 'territories' | 'houses' | 'assignments',
-  congregationId: string
-): Promise<{ pulled: number; pushed: number }> {
-  const since = getReplicationState(collectionName).lastSync || undefined;
-  
-  // First pull from server
-  const pulled = await pullFromSupabase(db, collectionName, congregationId, since);
-  
-  // Then push local changes
-  const pushed = await pushToSupabase(db, collectionName, congregationId);
-  
-  return { pulled, pushed };
-}
-
-/**
- * Sync all collections
- */
-export async function syncAll(
-  db: TerritoryDatabase,
-  congregationId: string
-): Promise<Record<string, { pulled: number; pushed: number }>> {
-  const results: Record<string, { pulled: number; pushed: number }> = {};
-  
-  const collections: Array<'territories' | 'houses' | 'assignments'> = [
-    'territories',
-    'houses',
-    'assignments',
-  ];
-
-  for (const collectionName of collections) {
-    try {
-      results[collectionName] = await syncCollection(db, collectionName, congregationId);
-    } catch (error) {
-      logger.error(`[Replication] Failed to sync ${collectionName}:`, error);
-      results[collectionName] = { pulled: 0, pushed: 0 };
-    }
-  }
-
-  return results;
-}
-
-/**
- * Get replication status
- */
-export function getReplicationStatus(collectionName?: string): ReplicationState | Map<string, ReplicationState> {
-  if (collectionName) {
-    return getReplicationState(collectionName);
-  }
-  return replicationStates;
-}
-
-/**
- * Subscribe to real-time changes from Supabase
- */
-export function subscribeToChanges<T = Record<string, unknown>>(
-  collectionName: 'territories' | 'houses' | 'assignments',
-  congregationId: string,
-  callback: (payload: RealtimePayload<T>) => void
-): () => void {
-  const channel = supabase
-    .channel(`${collectionName}_changes`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: collectionName,
-        filter: `congregation_id=eq.${congregationId}`,
-      },
-      (payload: unknown) => {
-        if (!isValidPayload(payload)) {
-          logger.warn('[Replication] Invalid payload received:', payload);
-          return;
-        }
-        callback(payload as RealtimePayload<T>);
-      }
-    )
-    .subscribe();
-
-  // Return unsubscribe function
-  return () => {
-    supabase.removeChannel(channel);
+    return serialized;
+  };
+  return {
+    newDocumentState: serialize(row.newDocumentState) ?? {},
+    assumedMasterState: serialize(row.assumedMasterState),
   };
 }
 
-/**
- * Initialize replication for all collections
- * Sets up real-time subscriptions and periodic sync
- */
+async function parseResponse<T>(response: Response): Promise<T> {
+  const body = (await response.json()) as T & {
+    error?: { message?: string; code?: string };
+  };
+  if (!response.ok) {
+    throw new Error(body.error?.message ?? body.error?.code ?? 'Replication request failed.');
+  }
+  return body;
+}
+
+function createReplication(
+  db: TerritoryDatabase,
+  collection: ReplicationCollection,
+  congregationId: string,
+): RxReplicationState<LocalDocument, SyncCheckpoint> {
+  const status = getStatus(collection);
+  const state = replicateRxCollection<LocalDocument, SyncCheckpoint>({
+    replicationIdentifier: `territory-mapper-v2:${location.origin}:${congregationId}:${collection}`,
+    collection: db[collection],
+    live: true,
+    retryTime: 5_000,
+    waitForLeadership: true,
+    toggleOnDocumentVisible: true,
+    pull: {
+      batchSize: 100,
+      async handler(checkpoint, batchSize) {
+        const response = await fetch('/api/replication/pull', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ collection, checkpoint: checkpoint ?? null, limit: batchSize }),
+        });
+        const result = await parseResponse<PullResponse>(response);
+        status.lastSuccessfulSync = new Date().toISOString();
+        status.error = null;
+        useSyncStore.getState().setLastSync(status.lastSuccessfulSync);
+        useSyncStore.getState().setOfflineDataReady(true);
+        useSyncStore.getState().setSyncError(null);
+        return {
+          documents: result.documents.map((document) => toLocalDocument(collection, document)),
+          checkpoint: result.checkpoint ?? undefined,
+        };
+      },
+    },
+    ...(collection === 'visits'
+      ? {
+          push: {
+            batchSize: 50,
+            async handler(rows: RxReplicationWriteToMasterRow<LocalDocument>[]) {
+              const response = await fetch('/api/replication/push', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  collection,
+                  rows: rows.map((row) => toPushRow(collection, row)),
+                }),
+              });
+              const result = await parseResponse<PushResponse>(response);
+              status.lastSuccessfulSync = new Date().toISOString();
+              status.error = null;
+              useSyncStore.getState().setLastSync(status.lastSuccessfulSync);
+              useSyncStore.getState().setSyncError(null);
+              return result.conflicts.map((conflict) =>
+                toLocalDocument(collection, conflict.server_document),
+              );
+            },
+          },
+        }
+      : {}),
+  });
+
+  state.active$.subscribe((active) => {
+    status.active = active;
+    useSyncStore.getState().setSyncing(
+      [...statuses.values()].some((collectionStatus) => collectionStatus.active),
+    );
+    if (!active && !status.error) status.lastSuccessfulSync = new Date().toISOString();
+  });
+  state.received$.subscribe(() => {
+    status.received += 1;
+  });
+  state.sent$.subscribe(() => {
+    status.sent += 1;
+    const pending = useSyncStore.getState().pendingChanges;
+    useSyncStore.getState().setPendingChanges(Math.max(0, pending - 1));
+  });
+  state.conflict$.subscribe(() => {
+    status.conflicts += 1;
+  });
+  state.error$.subscribe((error) => {
+    status.error = error.message;
+    useSyncStore.getState().setSyncError('Some field changes could not synchronize. Retry when online.');
+    logger.error(`[Replication] ${collection} failed`, { message: error.message });
+  });
+  return state;
+}
+
+function ensureBundle(db: TerritoryDatabase, congregationId: string): ReplicationBundle {
+  const existing = stateBundles.get(db);
+  if (existing) {
+    existing.references += 1;
+    return existing;
+  }
+  const states = new Map<ReplicationCollection, RxReplicationState<LocalDocument, SyncCheckpoint>>();
+  for (const collection of ['territories', 'houses', 'assignments', 'visits'] as const) {
+    states.set(collection, createReplication(db, collection, congregationId));
+  }
+  const reSync = () => states.forEach((state) => state.reSync());
+  const interval = setInterval(reSync, 30_000);
+  window.addEventListener('online', reSync);
+  const setOnline = () => useSyncStore.getState().setOnline(true);
+  const setOffline = () => useSyncStore.getState().setOnline(false);
+  useSyncStore.getState().setOnline(navigator.onLine);
+  window.addEventListener('online', setOnline);
+  window.addEventListener('offline', setOffline);
+  const bundle = { states, interval, cleanupListeners: () => {
+    window.removeEventListener('online', reSync);
+    window.removeEventListener('online', setOnline);
+    window.removeEventListener('offline', setOffline);
+  }, references: 1 };
+  stateBundles.set(db, bundle);
+  return bundle;
+}
+
 export function initializeReplication(
   db: TerritoryDatabase,
   congregationId: string,
-  options: {
-    enableRealtime?: boolean;
-    syncInterval?: number;
-  } = {}
 ): () => void {
-  const { enableRealtime = true, syncInterval = 30000 } = options;
-
-  const unsubscribers: Array<() => void> = [];
-
-  // Set up real-time subscriptions
-  if (enableRealtime) {
-    const collections: Array<'territories' | 'houses' | 'assignments'> = [
-      'territories',
-      'houses',
-      'assignments',
-    ];
-
-    for (const collectionName of collections) {
-      const unsubscribe = subscribeToChanges(
-        collectionName,
-        congregationId,
-        async (payload) => {
-          // Handle real-time update
-          const collection = db[collectionName] as RxCollection;
-          
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const doc = payload.new as Record<string, unknown>;
-            const docId = typeof doc.id === 'string' ? doc.id : undefined;
-            if (!docId) {
-              logger.warn('[Replication] Document missing id:', doc);
-              return;
-            }
-            try {
-              const existing = await collection.findOne(docId).exec();
-              if (existing) {
-                await existing.update({ $set: doc });
-              } else {
-                await collection.insert(doc);
-              }
-            } catch (err) {
-              logger.error(`[Replication] Real-time update error:`, err);
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as Record<string, unknown>).id;
-            if (typeof oldId !== 'string') {
-              logger.warn('[Replication] Delete payload missing id:', payload.old);
-              return;
-            }
-            try {
-              const existing = await collection.findOne(oldId).exec();
-              if (existing) {
-                await existing.remove();
-              }
-            } catch (err) {
-              logger.error(`[Replication] Real-time delete error:`, err);
-            }
-          }
-        }
-      );
-      
-      unsubscribers.push(unsubscribe);
-    }
-  }
-
-  // Set up periodic sync
-  const intervalId = setInterval(() => {
-    syncAll(db, congregationId).catch((err) => {
-      logger.error('[Replication] Periodic sync error:', err);
-    });
-  }, syncInterval);
-
-  // Return cleanup function
+  const bundle = ensureBundle(db, congregationId);
   return () => {
-    clearInterval(intervalId);
-    unsubscribers.forEach((unsub) => unsub());
+    bundle.references -= 1;
+    if (bundle.references > 0) return;
+    clearInterval(bundle.interval);
+    bundle.cleanupListeners();
+    bundle.states.forEach((state) => void state.cancel());
+    stateBundles.delete(db);
   };
+}
+
+export async function syncAll(
+  db: TerritoryDatabase,
+  congregationId: string,
+): Promise<Record<string, { pulled: number; pushed: number }>> {
+  const bundle = stateBundles.get(db) ?? ensureBundle(db, congregationId);
+  const before = new Map(
+    [...statuses.entries()].map(([name, status]) => [name, { ...status }]),
+  );
+  bundle.states.forEach((state) => state.reSync());
+  await Promise.all([...bundle.states.values()].map((state) => state.awaitInSync()));
+  return Object.fromEntries(
+    [...bundle.states.keys()].map((name) => {
+      const current = getStatus(name);
+      const previous = before.get(name);
+      return [
+        name,
+        {
+          pulled: current.received - (previous?.received ?? 0),
+          pushed: current.sent - (previous?.sent ?? 0),
+        },
+      ];
+    }),
+  );
+}
+
+export function getReplicationStatus(
+  collection?: ReplicatedCollection,
+): CollectionReplicationStatus | Map<ReplicationCollection, CollectionReplicationStatus> {
+  if (collection) return getStatus(collection);
+  return statuses;
+}
+
+export function resetReplicationStatus(): void {
+  statuses.clear();
 }

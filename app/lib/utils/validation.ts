@@ -20,8 +20,8 @@ export function validateCoordinates(coords: unknown): coords is [number, number]
   );
 }
 
-/** Validate a GeoJSON Polygon boundary */
-export function validateBoundary(boundary: unknown): boolean {
+/** Validate a closed GeoJSON Polygon boundary with bounded coordinate pairs. */
+export function validateBoundary(boundary: unknown): boundary is GeoJSON.Polygon {
   if (!boundary || typeof boundary !== 'object') return false;
   const b = boundary as Record<string, unknown>;
   if (b.type !== 'Polygon') return false;
@@ -31,11 +31,10 @@ export function validateBoundary(boundary: unknown): boolean {
   // Each ring must have at least 4 points (closed polygon)
   for (const ring of b.coordinates) {
     if (!Array.isArray(ring) || ring.length < 4) return false;
-    for (const point of ring) {
-      if (!Array.isArray(point) || point.length < 2) return false;
-      if (typeof point[0] !== 'number' || typeof point[1] !== 'number') return false;
-      if (!isFinite(point[0]) || !isFinite(point[1])) return false;
-    }
+    for (const point of ring) if (!validateCoordinates(point)) return false;
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) return false;
   }
   return true;
 }

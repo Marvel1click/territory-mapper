@@ -2,85 +2,57 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/app/hooks/useAuth';
+import { Loader2, LockKeyhole } from 'lucide-react';
+import { DashboardErrorBoundary } from '@/app/components/error/ErrorBoundary';
 import { Header } from '@/app/components/layout/Header';
 import { Navigation } from '@/app/components/layout/Navigation';
-import { DashboardErrorBoundary } from '@/app/components/error/ErrorBoundary';
+import { useAuth } from '@/app/hooks/useAuth';
 import { useAccessibilityStore } from '@/app/lib/store';
-import { Loader2, Lock } from 'lucide-react';
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
-  const { highContrast, bigMode } = useAccessibilityStore();
+  const { highContrast, bigMode, reducedMotion } = useAccessibilityStore();
 
-  // Apply accessibility classes
   useEffect(() => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.toggle('high-contrast', highContrast);
-      document.documentElement.classList.toggle('big-mode', bigMode);
-    }
-  }, [highContrast, bigMode]);
+    document.documentElement.classList.toggle('high-contrast', highContrast);
+    document.documentElement.classList.toggle('big-mode', bigMode);
+    document.documentElement.classList.toggle('reduced-motion', reducedMotion);
+  }, [bigMode, highContrast, reducedMotion]);
 
-  // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [isLoading, isAuthenticated, router]);
+    if (!isLoading && !isAuthenticated) router.replace('/login');
+  }, [isAuthenticated, isLoading, router]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+      <div className="grid min-h-dvh place-items-center" role="status">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 aria-hidden="true" className="animate-spin text-primary" /> Loading workspace…
         </div>
       </div>
     );
   }
 
-  // Show access denied message while redirecting
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <Lock className="w-16 h-16 text-muted-foreground" />
-          <h1 className="text-2xl font-bold">Access Required</h1>
-          <p className="text-muted-foreground">Please sign in to access this page</p>
-          <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+      <div className="grid min-h-dvh place-items-center text-center">
+        <div>
+          <LockKeyhole aria-hidden="true" className="mx-auto mb-4 size-10 text-muted-foreground" />
+          <h1 className="text-2xl">Sign-in required</h1>
+          <p className="mt-2 text-muted-foreground">Opening the sign-in page…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-dvh bg-background">
       <Header />
-      
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="mx-auto flex max-w-[1600px]">
         <Navigation />
-        
-        <main
-          className="
-            flex-1 overflow-y-auto overflow-x-hidden
-            transition-all duration-200 ease-in-out
-            md:ml-64
-            w-full
-            min-h-0
-          "
-          role="main"
-          aria-label="Dashboard content"
-        >
-          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-            <DashboardErrorBoundary>
-              {children}
-            </DashboardErrorBoundary>
-          </div>
+        <main id="main-content" className="min-w-0 flex-1 px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 md:pb-8">
+          <DashboardErrorBoundary>{children}</DashboardErrorBoundary>
         </main>
       </div>
     </div>

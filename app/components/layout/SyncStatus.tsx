@@ -1,121 +1,56 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSync } from '@/app/hooks/useRxDB';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, Cloud, Database, Loader2, Map, RefreshCw, TriangleAlert, WifiOff, X } from 'lucide-react';
 import { useAuth } from '@/app/hooks/useAuth';
-import { 
-  Cloud, 
-  CloudOff, 
-  RefreshCw, 
-  CheckCircle2, 
-  AlertCircle,
-  WifiOff
-} from 'lucide-react';
+import { useSync } from '@/app/hooks/useRxDB';
 import { useSyncStore } from '@/app/lib/store';
-import { cn } from '@/app/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
-interface SyncStatusProps {
-  className?: string;
+export function SyncStatus() {
+  const { user } = useAuth();
+  const { sync } = useSync(user?.congregation_id);
+  const {
+    isOnline,
+    isSyncing,
+    lastSync,
+    pendingChanges,
+    syncError,
+    offlineDataReady,
+    basemapReady,
+    setOnline,
+    setBasemapReady,
+  } = useSyncStore();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const online = () => setOnline(true);
+    const offline = () => setOnline(false);
+    window.addEventListener('online', online); window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, [setOnline]);
+
+  useEffect(() => {
+    if (!open || !('caches' in window)) return;
+    let active = true;
+    void (async () => {
+      const names = (await caches.keys()).filter((name) => name.includes('basemap'));
+      const cachedRequests = await Promise.all(
+        names.map(async (name) => (await caches.open(name)).keys()),
+      );
+      if (active) setBasemapReady(cachedRequests.some((requests) => requests.length > 0));
+    })();
+    return () => { active = false; };
+  }, [open, setBasemapReady]);
+
+  const label = !isOnline ? 'Offline' : syncError ? 'Sync issue' : pendingChanges ? `${pendingChanges} queued` : isSyncing ? 'Syncing' : 'Synced';
+  const Icon = !isOnline ? WifiOff : syncError ? TriangleAlert : isSyncing ? Loader2 : CheckCircle2;
+
+  return <div className="relative"><Button variant="outline" size="sm" aria-expanded={open} aria-controls="sync-details" onClick={() => setOpen((value) => !value)}><Icon aria-hidden="true" className={isSyncing ? 'animate-spin' : ''} /><span className="hidden sm:inline">{label}</span></Button>{open ? <section id="sync-details" aria-label="Offline and synchronization status" className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border bg-card p-4 shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-bold">Field readiness</h2><Button size="icon-sm" variant="ghost" aria-label="Close sync status" onClick={() => setOpen(false)}><X aria-hidden="true" /></Button></div><dl className="space-y-3 text-sm"><StatusRow icon={isOnline ? Cloud : WifiOff} term="Connection" value={isOnline ? 'Online' : 'Offline'} ready={isOnline} /><StatusRow icon={Database} term="Offline assignment data" value={offlineDataReady ? 'Ready on this device' : 'Preparing after sign-in'} ready={offlineDataReady} /><StatusRow icon={Map} term="Basemap coverage" value={basemapReady ? 'Previously viewed tiles detected' : 'No viewed tiles confirmed'} ready={basemapReady} /><StatusRow icon={RefreshCw} term="Queued edits" value={`${pendingChanges} waiting`} ready={pendingChanges === 0} /></dl>{syncError ? <p role="alert" className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm font-semibold text-destructive">{syncError}</p> : null}<p className="mt-4 text-xs text-muted-foreground">Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'Not yet on this device'}</p><Button className="mt-4 w-full" size="sm" disabled={!isOnline || isSyncing} onClick={() => void sync()}>{isSyncing ? <Loader2 aria-hidden="true" className="animate-spin" /> : <RefreshCw aria-hidden="true" />} Sync now</Button></section> : null}</div>;
 }
 
-export function SyncStatus({ className }: SyncStatusProps) {
-  const { user } = useAuth();
-  const { sync, isSyncing, lastSync, error } = useSync(user?.congregation_id);
-  const { isOnline, pendingChanges } = useSyncStore();
-  const [showDetails, setShowDetails] = useState(false);
-
-  // Auto-hide details after 3 seconds
-  useEffect(() => {
-    if (showDetails) {
-      const timeout = setTimeout(() => setShowDetails(false), 3000);
-      return () => clearTimeout(timeout);
-    }
-  }, [showDetails, isSyncing]);
-
-  const handleSync = async () => {
-    try {
-      await sync();
-      setShowDetails(true);
-    } catch {
-      setShowDetails(true);
-    }
-  };
-
-  const getStatusIcon = () => {
-    if (isSyncing) {
-      return <RefreshCw className="w-4 h-4 animate-spin" />;
-    }
-    if (!isOnline) {
-      return <WifiOff className="w-4 h-4 text-amber-500" />;
-    }
-    if (error) {
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
-    }
-    if (pendingChanges > 0) {
-      return <CloudOff className="w-4 h-4 text-amber-500" />;
-    }
-    return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-  };
-
-  const getStatusText = () => {
-    if (isSyncing) return 'Syncing...';
-    if (!isOnline) return 'Offline';
-    if (error) return 'Sync Error';
-    if (pendingChanges > 0) return `${pendingChanges} pending`;
-    return 'Synced';
-  };
-
-  const getStatusColor = () => {
-    if (isSyncing) return 'text-blue-500';
-    if (!isOnline) return 'text-amber-500';
-    if (error) return 'text-red-500';
-    if (pendingChanges > 0) return 'text-amber-500';
-    return 'text-green-500';
-  };
-
-  return (
-    <div className={cn('relative', className)}>
-      <button
-        onClick={handleSync}
-        disabled={isSyncing || !isOnline}
-        className={cn(
-          'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all',
-          'bg-muted hover:bg-accent',
-          !isOnline && 'opacity-70'
-        )}
-      >
-        {getStatusIcon()}
-        <span className={getStatusColor()}>{getStatusText()}</span>
-      </button>
-
-      {/* Status Tooltip */}
-      {showDetails && (
-        <div className="absolute top-full right-0 mt-2 p-3 bg-card border border-border rounded-lg shadow-lg whitespace-nowrap z-50">
-          {error ? (
-            <div className="flex items-center gap-2 text-red-500">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{error}</span>
-            </div>
-          ) : (
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center gap-2">
-                <Cloud className="w-4 h-4 text-muted-foreground" />
-                <span>Status: {isOnline ? 'Online' : 'Offline'}</span>
-              </div>
-              {lastSync && (
-                <div className="text-muted-foreground">
-                  Last sync: {new Date(lastSync).toLocaleTimeString()}
-                </div>
-              )}
-              {pendingChanges > 0 && (
-                <div className="text-amber-500">
-                  {pendingChanges} change{pendingChanges !== 1 ? 's' : ''} pending
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function StatusRow({ icon: Icon, term, value, ready }: { icon: typeof Cloud; term: string; value: string; ready: boolean }) {
+  return <div className="flex items-start gap-3"><Icon aria-hidden="true" className={ready ? 'mt-0.5 size-5 text-primary' : 'mt-0.5 size-5 text-amber-700 dark:text-amber-300'} /><div className="min-w-0 flex-1"><dt className="font-bold">{term}</dt><dd className="text-muted-foreground">{value}</dd></div><Badge variant="outline">{ready ? 'Ready' : 'Limited'}</Badge></div>;
 }

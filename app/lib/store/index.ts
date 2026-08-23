@@ -47,6 +47,7 @@ export const useAccessibilityStore = create<AccessibilityState>()(
         if (typeof document !== 'undefined' && state) {
           document.documentElement.classList.toggle('high-contrast', state.highContrast);
           document.documentElement.classList.toggle('big-mode', state.bigMode);
+          document.documentElement.classList.toggle('reduced-motion', state.reducedMotion);
         }
       },
     }
@@ -138,24 +139,38 @@ interface SyncState {
   lastSync: string | null;
   pendingChanges: number;
   syncError: string | null;
+  offlineDataReady: boolean;
+  basemapReady: boolean;
   
   setOnline: (online: boolean) => void;
   setSyncing: (syncing: boolean) => void;
-  setLastSync: (time: string) => void;
+  setLastSync: (time: string | null) => void;
   setPendingChanges: (count: number) => void;
   setSyncError: (error: string | null) => void;
+  setOfflineDataReady: (ready: boolean) => void;
+  setBasemapReady: (ready: boolean) => void;
+  resetSyncState: () => void;
 }
 
-export const useSyncStore = create<SyncState>()((set) => ({
+const initialSyncState = {
   isOnline: true,
   isSyncing: false,
   lastSync: null,
   pendingChanges: 0,
   syncError: null,
+  offlineDataReady: false,
+  basemapReady: false,
+};
+
+export const useSyncStore = create<SyncState>()((set) => ({
+  ...initialSyncState,
   
   setOnline: (online) => set({ isOnline: online }),
   setSyncing: (syncing) => set({ isSyncing: syncing }),
   setLastSync: (time) => set({ lastSync: time }),
   setPendingChanges: (count) => set({ pendingChanges: count }),
   setSyncError: (error) => set({ syncError: error }),
+  setOfflineDataReady: (ready) => set({ offlineDataReady: ready }),
+  setBasemapReady: (ready) => set({ basemapReady: ready }),
+  resetSyncState: () => set(initialSyncState),
 }));

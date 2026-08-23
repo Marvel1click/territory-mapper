@@ -24,7 +24,7 @@ export function RoleGuard({ children, allowedRoles, fallback }: RoleGuardProps) 
         const hasPermission = allowedRoles.includes(user.role);
         if (!hasPermission && !fallback) {
           // Redirect to appropriate dashboard based on role
-          const redirectPath = user.role === 'publisher' ? '/publisher' : '/overseer';
+          const redirectPath = user.role === 'publisher' ? '/field' : '/dashboard';
           router.replace(redirectPath);
         }
       }

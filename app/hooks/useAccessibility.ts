@@ -22,8 +22,9 @@ export function useAccessibility() {
     if (typeof document !== 'undefined') {
       document.documentElement.classList.toggle('high-contrast', highContrast);
       document.documentElement.classList.toggle('big-mode', bigMode);
+      document.documentElement.classList.toggle('reduced-motion', reducedMotion);
     }
-  }, [highContrast, bigMode]);
+  }, [highContrast, bigMode, reducedMotion]);
 
   // Haptic feedback trigger
   const triggerHaptic = useCallback(

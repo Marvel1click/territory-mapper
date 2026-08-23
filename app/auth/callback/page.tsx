@@ -2,123 +2,45 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { getSupabaseClient } from '@/app/lib/db/supabase/client';
-import { Loader2, MapPin } from 'lucide-react';
+import { apiFetch } from '@/app/lib/api/client';
+import type { UserProfile } from '@/app/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('Processing...');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const handleAuthCallback = async () => {
+    let active = true;
+    void (async () => {
       try {
-        const supabase = getSupabaseClient();
-        
-        if (!supabase) {
-          setError('Authentication service not configured. Please contact support.');
-          return;
-        }
-
-        // Get query parameters from URL
         const query = new URLSearchParams(window.location.search);
-        const type = query.get('type');
-
-        // Check for error in URL
-        const errorDescription = query.get('error_description');
-        if (errorDescription) {
-          setError(errorDescription);
-          return;
+        const providerError = query.get('error_description');
+        if (providerError) throw new Error(providerError);
+        const supabase = getSupabaseClient();
+        if (!supabase) throw new Error('Authentication is not configured.');
+        const code = query.get('code');
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw exchangeError;
+          window.history.replaceState({}, '', window.location.pathname);
         }
-
-        // Handle password recovery
-        if (type === 'recovery') {
-          setMessage('Verifying reset link...');
-          
-          // The session should already be set by Supabase
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError || !session) {
-            setError('Invalid or expired reset link. Please try again.');
-            return;
-          }
-
-          // Redirect to update password page
-          router.push('/update-password');
-          return;
-        }
-
-        // Handle email confirmation
-        if (type === 'signup' || type === 'email_change') {
-          setMessage('Confirming your email...');
-          
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError) {
-            setError('Failed to confirm email. Please try again.');
-            return;
-          }
-
-          if (session) {
-            setMessage('Email confirmed! Redirecting...');
-            router.push('/');
-          } else {
-            setMessage('Email confirmed! Please sign in.');
-            setTimeout(() => router.push('/login'), 2000);
-          }
-          return;
-        }
-
-        // Default: check session and redirect
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-          router.push('/');
-        } else {
-          router.push('/login');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !data.session) throw new Error('This link is invalid or expired.');
+        if (query.get('type') === 'recovery') { router.replace('/update-password'); return; }
+        const me = await apiFetch<{ profile: UserProfile }>('/api/me');
+        router.replace(me.profile.role === 'publisher' ? '/field' : '/dashboard');
+      } catch (callbackError) {
+        if (active) setError(callbackError instanceof Error ? callbackError.message : 'Authentication could not be completed.');
       }
-    };
-
-    handleAuthCallback();
+    })();
+    return () => { active = false; };
   }, [router]);
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-2 font-bold text-xl">
-            <MapPin className="w-6 h-6 text-primary" />
-            <span>Territory Mapper</span>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md text-center">
-          {error ? (
-            <div className="bg-card p-8 rounded-2xl border border-border shadow-sm">
-              <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                {error}
-              </div>
-              <button
-                onClick={() => router.push('/login')}
-                className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors"
-              >
-                Go to Sign In
-              </button>
-            </div>
-          ) : (
-            <div className="bg-card p-8 rounded-2xl border border-border shadow-sm">
-              <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-4" />
-              <p className="text-muted-foreground">{message}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <main className="grid min-h-dvh place-items-center px-4"><Card className="w-full max-w-md text-center"><CardHeader><Image src="/icons/icon-192x192.png" alt="" width={56} height={56} className="mx-auto" /><CardTitle>{error ? 'Link unavailable' : 'Verifying secure link'}</CardTitle><CardDescription>Please keep this page open.</CardDescription></CardHeader><CardContent>{error ? <><Alert variant="destructive" className="text-left"><AlertTriangle aria-hidden="true" /><AlertTitle>Authentication failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert><Button className="mt-5" onClick={() => router.replace('/login')}>Return to sign in</Button></> : <div role="status" className="flex items-center justify-center gap-3 py-6 text-muted-foreground"><Loader2 aria-hidden="true" className="animate-spin text-primary" />Completing authentication…</div>}</CardContent></Card></main>;
 }

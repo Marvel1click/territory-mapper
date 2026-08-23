@@ -1,12 +1,15 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { createContext, useContext, useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useMapStore } from '@/app/lib/store';
 import { useAccessibility } from '@/app/hooks/useAccessibility';
 import { cn } from '@/app/lib/utils';
 import { AlertCircle } from 'lucide-react';
+import { logger } from '@/app/lib/utils/logger';
+
+const MapInstanceContext = createContext<mapboxgl.Map | null>(null);
 
 interface MapContainerProps {
   className?: string;
@@ -26,7 +29,7 @@ export function MapContainer({ className, children, onMapLoad }: MapContainerPro
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   
   if (!mapboxToken && typeof window !== 'undefined') {
-    console.warn('Mapbox token is not configured. Map functionality will be limited.');
+    logger.warn('mapbox_public_configuration_missing');
   }
 
   useEffect(() => {
@@ -83,8 +86,8 @@ export function MapContainer({ className, children, onMapLoad }: MapContainerPro
         onMapLoad?.(initializedMap);
       });
 
-      initializedMap.on('error', (e) => {
-        console.error('Mapbox error:', e);
+      initializedMap.on('error', (event) => {
+        logger.error('mapbox_runtime_error', event.error);
         setError('Failed to load map. Please check your Mapbox configuration.');
       });
 
@@ -104,7 +107,7 @@ export function MapContainer({ className, children, onMapLoad }: MapContainerPro
         map.current = null;
       };
     } catch (err) {
-      console.error('Failed to initialize map:', err);
+      logger.error('mapbox_initialization_failed', err);
       setError('Failed to initialize map. Please try again later.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,6 +125,7 @@ export function MapContainer({ className, children, onMapLoad }: MapContainerPro
   }, [highContrast, isLoaded]);
 
   return (
+    <MapInstanceContext.Provider value={map.current}>
     <div className={cn('relative w-full h-full overflow-hidden', className)}>
       <div ref={mapContainer} className="absolute inset-0" />
       
@@ -155,13 +159,10 @@ export function MapContainer({ className, children, onMapLoad }: MapContainerPro
         </div>
       )}
     </div>
+    </MapInstanceContext.Provider>
   );
 }
 
-// Hook to access map instance - must be used inside MapContainer's children
-// TODO: Implement proper map context provider
 export function useMapInstance(): mapboxgl.Map | null {
-  // Placeholder implementation - returns null
-  // In a full implementation, this would use React Context to access the parent map
-  return null;
+  return useContext(MapInstanceContext);
 }
