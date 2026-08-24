@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr';
+import { logger } from '@/app/lib/utils/logger';
 
 // Validate environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -8,7 +9,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 // This prevents errors during SSR/build when env vars might not be set
 function createSupabaseClient() {
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn('Supabase environment variables are not set. Authentication will not work.');
+    logger.warn('supabase_public_configuration_missing');
     // Return a mock client that will fail gracefully
     return null;
   }

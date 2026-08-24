@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { initDatabase, closeDatabase, resetDatabase, type TerritoryDatabase } from '@/app/lib/db/rxdb';
-import type { Territory, House, Assignment } from '@/app/types';
+import {
+  initDatabase,
+  closeDatabase,
+  resetDatabase,
+  type LocalDocument,
+  type TerritoryDatabase,
+} from '@/app/lib/db/rxdb';
+import type { Territory, House, Assignment, Visit } from '@/app/types';
 import { syncAll, initializeReplication } from '@/app/lib/db/replication/supabase';
 import { logger } from '@/app/lib/utils/logger';
+import { useSyncStore } from '@/app/lib/store';
 
 // Type for RxDB documents that may have toJSON method
 interface RxDocument {
@@ -111,7 +118,7 @@ export function useTerritories(congregationId?: string) {
     async (territory: unknown) => {
       if (!db) throw new Error('Database not initialized');
       const collection = db.territories;
-      return await collection.insert(territory);
+      return await collection.insert(territory as LocalDocument);
     },
     [db]
   );
@@ -122,7 +129,7 @@ export function useTerritories(congregationId?: string) {
       const collection = db.territories;
       const doc = await collection.findOne(id).exec();
       if (doc) {
-        return await doc.update({ $set: updates });
+        return await doc.update({ $set: updates as Partial<LocalDocument> });
       }
     },
     [db]
@@ -198,7 +205,7 @@ export function useHouses(territoryId?: string, congregationId?: string) {
     async (house: unknown) => {
       if (!db) throw new Error('Database not initialized');
       const collection = db.houses;
-      return await collection.insert(house);
+      return await collection.insert(house as LocalDocument);
     },
     [db]
   );
@@ -209,7 +216,9 @@ export function useHouses(territoryId?: string, congregationId?: string) {
       const collection = db.houses;
       const doc = await collection.findOne(id).exec();
       if (doc) {
-        return await doc.update({ $set: { ...updates, updated_at: new Date().toISOString() } });
+        return await doc.update({
+          $set: { ...updates, updated_at: new Date().toISOString() } as Partial<LocalDocument>,
+        });
       }
     },
     [db]
@@ -234,7 +243,7 @@ export function useHouses(territoryId?: string, congregationId?: string) {
       const results = [];
       for (const house of houses) {
         try {
-          const result = await collection.insert(house);
+          const result = await collection.insert(house as LocalDocument);
           results.push(result);
         } catch (err) {
           logger.error('Failed to insert house:', err);
@@ -299,7 +308,7 @@ export function useAssignments(congregationId?: string) {
     async (assignment: unknown) => {
       if (!db) throw new Error('Database not initialized');
       const collection = db.assignments;
-      return await collection.insert(assignment);
+      return await collection.insert(assignment as LocalDocument);
     },
     [db]
   );
@@ -310,7 +319,7 @@ export function useAssignments(congregationId?: string) {
       const collection = db.assignments;
       const doc = await collection.findOne(id).exec();
       if (doc) {
-        return await doc.update({ $set: updates });
+        return await doc.update({ $set: updates as Partial<LocalDocument> });
       }
     },
     [db]
@@ -337,6 +346,32 @@ export function useAssignments(congregationId?: string) {
   };
 }
 
+export function useVisits(congregationId?: string) {
+  const { db, isLoading: dbLoading } = useRxDB(congregationId);
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) {
+      const timeoutId = setTimeout(() => setIsLoading(false), 0);
+      return () => clearTimeout(timeoutId);
+    }
+    const subscription = db.visits.find().$.subscribe({
+      next: (docs: unknown[]) => {
+        setVisits(docs.map((doc) => {
+          const value = doc as RxDocument;
+          return (value.toJSON ? value.toJSON() : doc) as Visit;
+        }));
+        setIsLoading(false);
+      },
+      error: () => setIsLoading(false),
+    });
+    return () => subscription.unsubscribe();
+  }, [db]);
+
+  return { visits, isLoading: isLoading || dbLoading };
+}
+
 // Hook for replication/sync
 export function useSync(congregationId?: string) {
   const { db } = useRxDB(congregationId);
@@ -350,9 +385,14 @@ export function useSync(congregationId?: string) {
     if (!db || !congregationId) return;
 
     // Initialize real-time replication
-    const cleanup = initializeReplication(db, congregationId, {
-      enableRealtime: true,
-      syncInterval: 30000, // 30 seconds
+    const cleanup = initializeReplication(db, congregationId);
+    void Promise.all([
+      db.territories.count().exec(),
+      db.assignments.count().exec(),
+    ]).then(([territoryCount, assignmentCount]) => {
+      if (territoryCount > 0 || assignmentCount > 0) {
+        useSyncStore.getState().setOfflineDataReady(true);
+      }
     });
 
     return cleanup;
@@ -374,11 +414,16 @@ export function useSync(congregationId?: string) {
       
       setLastSync(new Date().toISOString());
       setPendingChanges(0);
+      useSyncStore.getState().setLastSync(new Date().toISOString());
+      useSyncStore.getState().setPendingChanges(0);
+      useSyncStore.getState().setOfflineDataReady(true);
+      useSyncStore.getState().setSyncError(null);
       
       return { pulled: totalPulled, pushed: totalPushed, details: results };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed';
       setError(message);
+      useSyncStore.getState().setSyncError(message);
       throw err;
     } finally {
       setIsSyncing(false);

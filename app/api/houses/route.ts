@@ -1,202 +1,105 @@
-/**
- * Houses API Routes
- * 
- * GET /api/houses?territory_id=xxx - List houses for a territory
- * POST /api/houses - Create a new house
- */
-
-import { NextRequest, NextResponse } from 'next/server';
+import { AppError, apiErrorResponse, apiSuccess, getRequestId, toAppError } from '@/app/lib/api/errors';
+import { assertSameOrigin, parseJson, throttleMutation } from '@/app/lib/api/request';
+import { requireAuthContext } from '@/app/lib/auth/context';
+import { createAdminClient } from '@/app/lib/db/supabase/admin';
 import { createClient } from '@/app/lib/db/supabase/server';
+import {
+  activeDncKeyVersion,
+  encryptDncValue,
+  hashSensitiveLookup,
+} from '@/app/lib/encryption/dnc';
 import { generateId } from '@/app/lib/utils';
-import { encryptDncAddress } from '@/app/lib/encryption/dnc';
-import { logger } from '@/app/lib/utils/logger';
-import { validateString, validateCoordinates, validateHouseStatus, MAX_LENGTHS } from '@/app/lib/utils/validation';
-import type { House } from '@/app/types';
+import { createHouseSchema } from '@/app/lib/validation/schemas';
 
-// GET /api/houses
-export async function GET(request: NextRequest) {
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
+  const requestId = getRequestId(request);
   try {
+    const context = await requireAuthContext();
+    const territoryId = new URL(request.url).searchParams.get('territory_id');
     const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const congregationId = user.user_metadata.congregation_id;
-    
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
-    const territoryId = searchParams.get('territory_id');
-
     let query = supabase
       .from('houses')
-      .select('*')
-      .eq('congregation_id', congregationId);
-
-    if (territoryId) {
-      query = query.eq('territory_id', territoryId);
-    }
-
-    const { data: houses, error } = await query.order('created_at', { ascending: true });
-
-    if (error) {
-      logger.error('Error fetching houses:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch houses' },
-        { status: 500 }
-      );
-    }
-
-    // Decrypt DNC addresses for authorized users
-    const processedHouses = houses?.map((house) => {
-      if (house.is_dnc && house.dnc_encrypted_address) {
-        // Only return that it's a DNC, not the actual address
-        return {
-          ...house,
-          address: 'Do Not Call',
-          dnc_encrypted_address: undefined,
-        };
-      }
-      return house;
-    });
-
-    return NextResponse.json({ houses: processedHouses });
+      .select('id,territory_id,congregation_id,address,coordinates,status,notes,is_dnc,last_visited,last_visitor,return_visit_date,created_at,updated_at,version,server_updated_at,deleted_at')
+      .eq('congregation_id', context.membership.congregation_id)
+      .is('deleted_at', null);
+    if (territoryId) query = query.eq('territory_id', territoryId);
+    const { data, error } = await query.order('created_at', { ascending: true });
+    if (error) throw error;
+    return apiSuccess({ houses: data ?? [] }, requestId);
   } catch (error) {
-    logger.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(toAppError(error), requestId);
   }
 }
 
-// POST /api/houses
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   try {
+    assertSameOrigin(request);
+    const context = await requireAuthContext(['admin', 'overseer']);
+    throttleMutation(context.userId, 'house-create');
+    const input = await parseJson(request, createHouseSchema);
     const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const congregationId = user.user_metadata.congregation_id;
-    
-    if (!congregationId) {
-      return NextResponse.json(
-        { error: 'User not associated with a congregation' },
-        { status: 400 }
-      );
-    }
-
-    const body = await request.json();
-    const { 
-      territory_id, 
-      address, 
-      coordinates, 
-      status = 'not-visited',
-      notes = '',
-      is_dnc = false 
-    } = body;
-
-    if (!territory_id || !address || !coordinates) {
-      return NextResponse.json(
-        { error: 'Territory ID, address, and coordinates are required' },
-        { status: 400 }
-      );
-    }
-
-    if (!validateString(address, MAX_LENGTHS.address)) {
-      return NextResponse.json(
-        { error: `Address must be at most ${MAX_LENGTHS.address} characters` },
-        { status: 400 }
-      );
-    }
-
-    if (!validateCoordinates(coordinates)) {
-      return NextResponse.json(
-        { error: 'Invalid coordinates: must be [longitude, latitude] within valid ranges' },
-        { status: 400 }
-      );
-    }
-
-    if (status && !validateHouseStatus(status)) {
-      return NextResponse.json(
-        { error: 'Invalid house status' },
-        { status: 400 }
-      );
-    }
-
-    if (notes && !validateString(notes, MAX_LENGTHS.notes)) {
-      return NextResponse.json(
-        { error: `Notes must be at most ${MAX_LENGTHS.notes} characters` },
-        { status: 400 }
-      );
-    }
-
-    // Verify territory belongs to user's congregation
     const { data: territory } = await supabase
       .from('territories')
       .select('id')
-      .eq('id', territory_id)
-      .eq('congregation_id', congregationId)
-      .single();
+      .eq('id', input.territory_id)
+      .eq('congregation_id', context.membership.congregation_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (!territory) throw new AppError('NOT_FOUND', 'Territory not found.', 404);
 
-    if (!territory) {
-      return NextResponse.json(
-        { error: 'Territory not found or access denied' },
-        { status: 404 }
-      );
-    }
-
-    // Prepare house data
-    const newHouse: Omit<House, 'dnc_encryption_key_id' | 'last_visited' | 'last_visitor' | 'return_visit_date'> & { dnc_encrypted_address?: string } = {
-      id: generateId(),
-      territory_id,
-      congregation_id: congregationId,
-      address: address.trim(),
-      coordinates,
-      status,
-      notes: notes?.trim() || null,
-      is_dnc,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    // Encrypt address if DNC
-    if (is_dnc) {
-      newHouse.dnc_encrypted_address = encryptDncAddress(address.trim());
-    }
-
+    const houseId = generateId();
+    const restrictionTime = input.is_dnc ? new Date().toISOString() : null;
     const { data: house, error } = await supabase
       .from('houses')
-      .insert(newHouse)
-      .select()
+      .insert({
+        id: houseId,
+        territory_id: input.territory_id,
+        congregation_id: context.membership.congregation_id,
+        address: input.is_dnc ? 'DNC address restricted' : input.address,
+        coordinates: input.coordinates,
+        status: input.is_dnc ? 'dnc' : input.status,
+        notes: input.is_dnc ? null : input.notes ?? null,
+        is_dnc: input.is_dnc,
+        deleted_at: restrictionTime,
+        last_mutation_id: crypto.randomUUID(),
+      })
+      .select('*')
       .single();
+    if (error) throw error;
 
-    if (error) {
-      logger.error('Error creating house:', error);
-      return NextResponse.json(
-        { error: 'Failed to create house' },
-        { status: 500 }
-      );
+    if (input.is_dnc) {
+      const admin = createAdminClient();
+      const keyVersion = activeDncKeyVersion();
+      const encryptedAddress = encryptDncValue(input.address, keyVersion);
+      const encryptedNotes = input.notes ? encryptDncValue(input.notes, keyVersion) : null;
+      const now = new Date().toISOString();
+      const { error: dncError } = await admin.from('dnc_records').insert({
+        house_id: houseId,
+        territory_id: input.territory_id,
+        congregation_id: context.membership.congregation_id,
+        address_ciphertext: encryptedAddress.ciphertext,
+        notes_ciphertext: encryptedNotes?.ciphertext ?? null,
+        address_hash: hashSensitiveLookup(input.address),
+        key_version: keyVersion,
+        coordinates: input.coordinates,
+        warning_radius_m: 35,
+        active: true,
+        migrated_at: now,
+        verified_at: now,
+        created_by: context.userId,
+      });
+      if (dncError) {
+        await admin.from('houses').delete().eq('id', houseId);
+        throw dncError;
+      }
     }
 
-    return NextResponse.json({ house }, { status: 201 });
+    delete house.dnc_encrypted_address;
+    return apiSuccess({ house }, requestId, { status: 201 });
   } catch (error) {
-    logger.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(toAppError(error), requestId);
   }
 }

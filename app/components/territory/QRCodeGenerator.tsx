@@ -1,204 +1,68 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { generateId } from '@/app/lib/utils';
-import { useAccessibility } from '@/app/hooks/useAccessibility';
-import { cn } from '@/app/lib/utils';
-import { logger } from '@/app/lib/utils/logger';
-import { Download, Share2, X, Copy, Check } from 'lucide-react';
+import { Check, Copy, Download, Loader2, QrCode, Share2 } from 'lucide-react';
+import { apiFetch, formatClientError } from '@/app/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-interface QRCodeGeneratorProps {
-  territoryId: string;
+interface SecureCheckoutLink {
+  id: string;
+  url: string;
   territoryName: string;
-  className?: string;
+  expires_at: string;
 }
 
-export function QRCodeGenerator({ territoryId, territoryName, className }: QRCodeGeneratorProps) {
-  const { triggerHaptic, hapticPatterns } = useAccessibility();
-  const [showModal, setShowModal] = useState(false);
+export function QRCodeGenerator({ territoryId, territoryName }: { territoryId: string; territoryName: string }) {
+  const [open, setOpen] = useState(false);
+  const [hours, setHours] = useState('24');
+  const [link, setLink] = useState<SecureCheckoutLink | null>(null);
+  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  // Generate checkout URL
-  const generateCheckoutUrl = useCallback(() => {
-    const token = generateId();
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${baseUrl}/checkout?t=${territoryId}&token=${token}`;
-  }, [territoryId]);
-
-  // Open modal and generate URL
-  const handleOpen = () => {
-    const url = generateCheckoutUrl();
-    setCheckoutUrl(url);
-    setShowModal(true);
-    triggerHaptic(hapticPatterns.medium);
-  };
-
-  // Close modal
-  const handleClose = () => {
-    setShowModal(false);
-    setCopied(false);
-  };
-
-  // Copy URL to clipboard
-  const handleCopy = async () => {
+  const createLink = async () => {
+    setBusy(true); setError(null);
     try {
-      await navigator.clipboard.writeText(checkoutUrl);
-      setCopied(true);
-      triggerHaptic(hapticPatterns.success);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      logger.error('Failed to copy:', err);
-    }
+      const response = await apiFetch<{ checkoutLink: SecureCheckoutLink }>('/api/checkout-links', { method: 'POST', body: JSON.stringify({ territoryId, expiresInHours: Number(hours) }) });
+      setLink(response.checkoutLink);
+    } catch (createError) { setError(formatClientError(createError)); }
+    finally { setBusy(false); }
   };
 
-  // Download QR code as PNG
-  const handleDownload = () => {
-    const svg = document.getElementById('territory-qr-code');
+  const copy = async () => {
+    if (!link) return;
+    await navigator.clipboard.writeText(link.url);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2_000);
+  };
+
+  const download = () => {
+    const svg = document.getElementById(`checkout-qr-${territoryId}`);
     if (!svg) return;
-
-    const svgData = new XMLSerializer().serializeToString(svg);
+    const image = new Image();
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      
-      const pngFile = canvas.toDataURL('image/png');
-      const downloadLink = document.createElement('a');
-      downloadLink.download = `territory-${territoryId}-qr.png`;
-      downloadLink.href = pngFile;
-      downloadLink.click();
-      
-      triggerHaptic(hapticPatterns.success);
+    image.onload = () => {
+      canvas.width = 1024; canvas.height = 1024;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.fillStyle = '#ffffff'; context.fillRect(0, 0, 1024, 1024); context.drawImage(image, 0, 0, 1024, 1024);
+      const anchor = document.createElement('a'); anchor.href = canvas.toDataURL('image/png'); anchor.download = `${territoryName.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase()}-checkout.png`; anchor.click();
     };
-    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
-  };
-
-  // Share functionality
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Territory: ${territoryName}`,
-          text: `Check out this territory: ${territoryName}`,
-          url: checkoutUrl,
-        });
-        triggerHaptic(hapticPatterns.success);
-      } catch {
-        // User cancelled or share failed - silently ignore
-      }
-    } else {
-      handleCopy();
-    }
+    image.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svg))))}`;
   };
 
   return (
-    <>
-      {/* Trigger button */}
-      <button
-        onClick={handleOpen}
-        className={cn(
-          'flex items-center gap-2 px-3 py-2 rounded-lg',
-          'bg-primary/10 text-primary hover:bg-primary/20 transition-colors',
-          className
-        )}
-      >
-        <Share2 className="w-4 h-4" />
-        <span className="text-sm font-medium">Share QR</span>
-      </button>
-
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-2xl border border-border shadow-xl max-w-md w-full p-6">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-xl font-bold">Share Territory</h3>
-                <p className="text-sm text-muted-foreground">{territoryName}</p>
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-2 hover:bg-accent rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* QR Code */}
-            <div className="flex justify-center mb-6">
-              <div className="p-4 bg-white rounded-xl">
-                <QRCodeSVG
-                  id="territory-qr-code"
-                  value={checkoutUrl}
-                  size={200}
-                  level="H"
-                  includeMargin={true}
-                  imageSettings={{
-                    src: '/icons/icon-192x192.svg',
-                    height: 40,
-                    width: 40,
-                    excavate: true,
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* URL Display */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Checkout Link</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={checkoutUrl}
-                  readOnly
-                  className="flex-1 px-3 py-2 text-sm bg-muted rounded-lg border border-input"
-                />
-                <button
-                  onClick={handleCopy}
-                  className={cn(
-                    'px-3 py-2 rounded-lg transition-colors',
-                    copied
-                      ? 'bg-green-500/10 text-green-500'
-                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  )}
-                >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={handleDownload}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-muted hover:bg-accent transition-colors font-medium"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </button>
-              <button
-                onClick={handleShare}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
-              >
-                <Share2 className="w-4 h-4" />
-                Share
-              </button>
-            </div>
-
-            {/* Instructions */}
-            <p className="mt-4 text-xs text-muted-foreground text-center">
-              Publishers can scan this QR code to check out the territory to their device.
-            </p>
-          </div>
-        </div>
-      )}
-    </>
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) { setLink(null); setError(null); } }}>
+      <DialogTrigger asChild><Button variant="outline" size="sm"><QrCode aria-hidden="true" /> Secure QR</Button></DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Checkout {territoryName}</DialogTitle><DialogDescription>Create a one-time, revocable link. Legacy unverified QR parameters are not accepted.</DialogDescription></DialogHeader>
+        {!link ? <div className="space-y-4"><div><Label htmlFor={`expiry-${territoryId}`}>Link lifetime</Label><Select value={hours} onValueChange={setHours}><SelectTrigger id={`expiry-${territoryId}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">1 hour</SelectItem><SelectItem value="8">8 hours</SelectItem><SelectItem value="24">24 hours</SelectItem><SelectItem value="72">3 days</SelectItem><SelectItem value="168">7 days</SelectItem></SelectContent></Select></div>{error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}<Button className="w-full" disabled={busy} onClick={() => void createLink()}>{busy ? <Loader2 aria-hidden="true" className="animate-spin" /> : <QrCode aria-hidden="true" />} Generate one-time link</Button></div> : <div className="space-y-4"><div className="mx-auto w-fit rounded-2xl bg-white p-4"><QRCodeSVG id={`checkout-qr-${territoryId}`} value={link.url} size={220} level="H" includeMargin imageSettings={{ src: '/icons/icon-192x192.png', width: 40, height: 40, excavate: true }} /></div><p className="text-center text-sm text-muted-foreground">Expires {new Date(link.expires_at).toLocaleString()}</p><div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => void copy()}>{copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />} {copied ? 'Copied' : 'Copy link'}</Button><Button variant="outline" className="flex-1" onClick={download}><Download aria-hidden="true" /> Download</Button></div>{typeof navigator !== 'undefined' && 'share' in navigator ? <Button className="w-full" onClick={() => void navigator.share({ title: `Territory: ${territoryName}`, url: link.url })}><Share2 aria-hidden="true" /> Share securely</Button> : null}</div>}
+        <DialogFooter><Button variant="ghost" onClick={() => setOpen(false)}>Close</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

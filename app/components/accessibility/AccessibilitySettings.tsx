@@ -1,124 +1,35 @@
 'use client';
 
+import { Eye, Moon, Move, Smartphone, Type, Volume2 } from 'lucide-react';
 import { useAccessibility } from '@/app/hooks/useAccessibility';
-import { HighContrastToggle } from './HighContrastToggle';
-import { BigModeToggle } from './BigModeToggle';
-import { Volume2, VolumeX, Smartphone, PhoneOff, Palette } from 'lucide-react';
+import { useDarkMode } from './DarkModeToggle';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 
 export function AccessibilitySettings() {
-  const {
-    haptics,
-    voiceEnabled,
-    reducedMotion,
-    toggleHaptics,
-    toggleVoice,
-    toggleReducedMotion,
-  } = useAccessibility();
+  const settings = useAccessibility();
+  const dark = useDarkMode();
+  const rows = [
+    { id: 'theme-dark', label: 'Dark theme', description: 'Use a low-glare dark surface.', checked: dark.isDark, toggle: dark.toggle, icon: Moon },
+    { id: 'high-contrast', label: 'High contrast', description: 'Use black, white, yellow, and cyan with stronger borders.', checked: settings.highContrast, toggle: settings.toggleHighContrast, icon: Eye },
+    { id: 'big-mode', label: 'Big Mode', description: 'Increase text and controls for field use.', checked: settings.bigMode, toggle: settings.toggleBigMode, icon: Type },
+    { id: 'reduced-motion', label: 'Reduced motion', description: 'Disable non-essential animation and smooth scrolling.', checked: settings.reducedMotion, toggle: settings.toggleReducedMotion, icon: Move },
+    { id: 'haptics', label: 'Haptic DNC alerts', description: 'Vibrate on supported devices when a DNC warning is nearby.', checked: settings.haptics, toggle: settings.toggleHaptics, icon: Smartphone },
+    { id: 'voice', label: 'Voice-to-text', description: 'Allow optional on-device dictation. Audio is never uploaded or stored.', checked: settings.voiceEnabled, toggle: settings.toggleVoice, icon: Volume2 },
+  ];
 
   return (
-    <section className="p-6 sm:p-8 bg-card rounded-2xl border border-border shadow-sm" aria-labelledby="accessibility-heading">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="p-2 bg-primary/10 rounded-xl">
-          <Palette className="w-6 h-6 text-primary" aria-hidden="true" />
-        </div>
-        <h2 id="accessibility-heading" className="text-xl sm:text-2xl font-bold">Accessibility Settings</h2>
-      </div>
-
-      <div className="space-y-8">
-        {/* Visual Settings */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Visual
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            <HighContrastToggle />
-            <BigModeToggle />
+    <Card>
+      <CardHeader><CardTitle>Accessibility & field comfort</CardTitle><CardDescription>Preferences stay on this device and can be changed at any time.</CardDescription></CardHeader>
+      <CardContent className="divide-y">
+        {rows.map(({ id, label, description, checked, toggle, icon: Icon }) => (
+          <div key={id} className="flex items-center gap-4 py-5">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Icon aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1"><label htmlFor={id} className="font-bold">{label}</label><p id={`${id}-description`} className="text-sm text-muted-foreground">{description}</p></div>
+            <Switch id={id} aria-describedby={`${id}-description`} checked={checked} onCheckedChange={toggle} />
           </div>
-        </div>
-
-        {/* Haptic Settings */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Haptics
-          </h3>
-          <button
-            onClick={toggleHaptics}
-            className={`
-              flex items-center gap-3 px-5 py-3 rounded-xl
-              transition-all duration-200 min-h-[48px]
-              focus-visible:ring-2 focus-visible:ring-ring
-              ${haptics
-                ? 'bg-primary/10 text-primary border border-primary/20'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }
-            `}
-            aria-pressed={haptics}
-          >
-            {haptics ? (
-              <>
-                <Smartphone className="w-5 h-5" aria-hidden="true" />
-                <span className="font-medium">Vibration On</span>
-              </>
-            ) : (
-              <>
-                <PhoneOff className="w-5 h-5" aria-hidden="true" />
-                <span className="font-medium">Vibration Off</span>
-              </>
-            )}
-          </button>
-          <p className="text-sm text-muted-foreground pl-1">
-            Get haptic feedback when approaching Do Not Call addresses
-          </p>
-        </div>
-
-        {/* Voice Settings */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Voice
-          </h3>
-          <button
-            onClick={toggleVoice}
-            className={`
-              flex items-center gap-3 px-5 py-3 rounded-xl
-              transition-all duration-200 min-h-[48px]
-              focus-visible:ring-2 focus-visible:ring-ring
-              ${voiceEnabled
-                ? 'bg-primary/10 text-primary border border-primary/20'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }
-            `}
-            aria-pressed={voiceEnabled}
-          >
-            {voiceEnabled ? (
-              <>
-                <Volume2 className="w-5 h-5" aria-hidden="true" />
-                <span className="font-medium">Voice-to-Text On</span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-5 h-5" aria-hidden="true" />
-                <span className="font-medium">Voice-to-Text Off</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Motion Settings */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Motion
-          </h3>
-          <label className="flex items-center gap-4 cursor-pointer p-2 -m-2 rounded-xl hover:bg-muted/50 transition-colors">
-            <input
-              type="checkbox"
-              checked={reducedMotion}
-              onChange={toggleReducedMotion}
-              className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary cursor-pointer"
-            />
-            <span className="font-medium">Reduce motion and animations</span>
-          </label>
-        </div>
-      </div>
-    </section>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

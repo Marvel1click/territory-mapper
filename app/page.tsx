@@ -1,140 +1,147 @@
-import Link from "next/link";
-import { MapPin, Shield, WifiOff, Accessibility } from "lucide-react";
+import Image from 'next/image';
+import Link from 'next/link';
+import {
+  Accessibility,
+  ArrowRight,
+  CheckCircle2,
+  CloudOff,
+  MapPinned,
+  ShieldCheck,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function Home() {
+const capabilities = [
+  {
+    icon: CloudOff,
+    title: 'Ready between connections',
+    description: 'Downloaded assignments and queued visits stay available in field mode.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Privacy by role',
+    description: 'Congregations stay isolated and DNC details remain restricted.',
+  },
+  {
+    icon: Accessibility,
+    title: 'Built to be readable',
+    description: 'Keyboard support, strong contrast, clear labels, and an optional Big Mode.',
+  },
+];
+
+export default function HomePage() {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Hero Section */}
-      <main className="flex-1">
-        <section className="py-20 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="flex justify-center mb-8">
-              <div className="p-4 bg-primary/10 rounded-2xl">
-                <MapPin className="w-16 h-16 text-primary" />
-              </div>
-            </div>
-            
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-              Territory Mapper
+    <div className="min-h-dvh">
+      <header className="border-b bg-background/85 backdrop-blur">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-3 rounded-xl font-bold">
+            <Image src="/icons/icon-192x192.png" alt="" width={42} height={42} priority />
+            <span className="text-xl">Territory Mapper</span>
+          </Link>
+          <Button asChild variant="outline">
+            <Link href="/login">Sign in</Link>
+          </Button>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:py-24">
+          <div>
+            <Badge variant="secondary" className="mb-5 gap-2 px-3 py-1.5">
+              <CheckCircle2 aria-hidden="true" className="size-4 text-primary" />
+              Invite-only congregation workspace
+            </Badge>
+            <h1 className="max-w-3xl text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
+              Calm territory work, from planning to the doorstep.
             </h1>
-            
-            <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-              Modern territory management for door-to-door ministry. 
-              Works offline, protects privacy, and puts accessibility first.
+            <p className="mt-6 max-w-2xl text-lg text-muted-foreground sm:text-xl">
+              Draw, assign, download, and work territories with a field-first map that protects
+              sensitive details and recovers cleanly when connectivity returns.
             </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/login"
-                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                Get Started
-              </Link>
-              <Link
-                href="/register"
-                className="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold rounded-xl border-2 border-border hover:bg-accent transition-colors"
-              >
-                Create Account
-              </Link>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button asChild size="lg" className="min-h-12 gap-2 px-6">
+                <Link href="/login">
+                  Open your workspace <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+              <Button asChild size="lg" variant="ghost" className="min-h-12">
+                <Link href="/register">How invitations work</Link>
+              </Button>
             </div>
+            <p className="mt-5 text-sm text-muted-foreground">
+              Existing accounts keep their current password. New access starts with an administrator invitation.
+            </p>
           </div>
+
+          <Card className="surface-calm overflow-hidden border-primary/15 p-2">
+            <CardHeader className="flex-row items-center justify-between gap-4 pb-2">
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground">Saturday field plan</p>
+                <CardTitle className="mt-1 text-2xl">North congregation</CardTitle>
+              </div>
+              <span className="grid size-12 place-items-center rounded-2xl bg-primary text-primary-foreground">
+                <MapPinned aria-hidden="true" />
+              </span>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-4">
+              <TerritoryPreview name="Oak Road" detail="46 homes" status="Available" tone="available" />
+              <TerritoryPreview name="Station Quarter" detail="Assigned to Alex" status="In field" tone="assigned" />
+              <TerritoryPreview name="Riverside" detail="Boundary review" status="Needs review" tone="pending" />
+              <div className="mt-4 rounded-2xl border bg-muted/55 p-4 text-sm text-muted-foreground">
+                Every status pairs color with a label and icon, so the map remains understandable
+                in high contrast and without color perception.
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
-        {/* Features Section */}
-        <section className="py-20 bg-muted/50">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-center mb-16">
-              Built for the Field
-            </h2>
-            
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              <FeatureCard
-                icon={<WifiOff className="w-8 h-8" />}
-                title="Works Offline"
-                description="Full functionality without internet. Your data stays on your device until you're back online."
-              />
-              <FeatureCard
-                icon={<Shield className="w-8 h-8" />}
-                title="Privacy First"
-                description="Do Not Call addresses are encrypted. Congregation data is completely isolated."
-              />
-              <FeatureCard
-                icon={<Accessibility className="w-8 h-8" />}
-                title="Accessible Design"
-                description="Big Mode for low vision, high contrast themes, and haptic feedback support."
-              />
-              <FeatureCard
-                icon={<MapPin className="w-8 h-8" />}
-                title="Smart Maps"
-                description="Draw territory boundaries, track house visits, and get DNC proximity warnings."
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section className="py-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-center mb-16">
-              How It Works
-            </h2>
-            
-            <div className="space-y-12">
-              <Step
-                number={1}
-                title="Overseer Creates Territories"
-                description="Draw territory boundaries on the map, add house data, and manage assignments."
-              />
-              <Step
-                number={2}
-                title="Generate QR Codes"
-                description="Create unique QR codes for each territory that publishers can scan to check out."
-              />
-              <Step
-                number={3}
-                title="Publishers Work Offline"
-                description="Scan a QR code to download territory data. Track visits, take voice notes, all offline."
-              />
-              <Step
-                number={4}
-                title="Automatic Sync"
-                description="When back on Wi-Fi, all changes sync automatically to the congregation database."
-              />
-            </div>
+        <section className="border-y bg-card/65">
+          <div className="mx-auto grid max-w-7xl gap-5 px-4 py-14 sm:px-6 md:grid-cols-3">
+            {capabilities.map(({ icon: Icon, title, description }) => (
+              <Card key={title} className="bg-background/75">
+                <CardHeader>
+                  <span className="mb-2 grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <Icon aria-hidden="true" />
+                  </span>
+                  <CardTitle>{title}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-muted-foreground">{description}</CardContent>
+              </Card>
+            ))}
           </div>
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="py-8 border-t">
-        <div className="max-w-6xl mx-auto px-4 text-center text-muted-foreground">
-          <p>© 2026 Territory Mapper. Built for the ministry.</p>
-        </div>
+      <footer className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-8 text-sm text-muted-foreground sm:px-6 md:flex-row md:items-center md:justify-between">
+        <p>Territory Mapper · Privacy-respecting field work</p>
+        <p>No public registration · No behavioral analytics</p>
       </footer>
     </div>
   );
 }
 
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+function TerritoryPreview({
+  name,
+  detail,
+  status,
+  tone,
+}: {
+  name: string;
+  detail: string;
+  status: string;
+  tone: 'available' | 'assigned' | 'pending';
+}) {
   return (
-    <div className="p-6 bg-card rounded-xl border border-border hover:shadow-lg transition-shadow">
-      <div className="text-primary mb-4">{icon}</div>
-      <h3 className="text-lg font-semibold mb-2">{title}</h3>
-      <p className="text-muted-foreground text-sm">{description}</p>
-    </div>
-  );
-}
-
-function Step({ number, title, description }: { number: number; title: string; description: string }) {
-  return (
-    <div className="flex gap-6">
-      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xl font-bold">
-        {number}
+    <div className="flex items-center gap-4 rounded-2xl border bg-card p-4">
+      <span className={`grid size-10 shrink-0 place-items-center rounded-full bg-muted status-${tone}`}>
+        <MapPinned aria-hidden="true" className="size-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-bold">{name}</p>
+        <p className="truncate text-sm text-muted-foreground">{detail}</p>
       </div>
-      <div>
-        <h3 className="text-xl font-semibold mb-2">{title}</h3>
-        <p className="text-muted-foreground">{description}</p>
-      </div>
+      <Badge variant="outline" className={`status-${tone}`}>{status}</Badge>
     </div>
   );
 }

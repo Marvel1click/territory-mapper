@@ -8,6 +8,7 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { useAccessibility } from '@/app/hooks/useAccessibility';
 import { cn } from '@/app/lib/utils';
 import { Save, RotateCcw, MapPin, AlertCircle } from 'lucide-react';
+import { logger } from '@/app/lib/utils/logger';
 
 interface BoundaryEditorProps {
   initialBoundary?: number[][][];
@@ -38,7 +39,7 @@ export function BoundaryEditor({
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   
   if (!mapboxToken && typeof window !== 'undefined') {
-    console.warn('Mapbox token is not configured. Map functionality will be limited.');
+    logger.warn('mapbox_public_configuration_missing');
   }
 
   // Handle draw changes - defined before useEffect to avoid temporal dead zone
@@ -134,8 +135,8 @@ export function BoundaryEditor({
       });
 
       // Handle map errors
-      initializedMap.on('error', (e) => {
-        console.error('Mapbox error:', e);
+      initializedMap.on('error', (event) => {
+        logger.error('mapbox_boundary_runtime_error', event.error);
         setError('Failed to load map. Please check your Mapbox configuration.');
       });
 
@@ -151,7 +152,7 @@ export function BoundaryEditor({
         map.current = null;
       };
     } catch (err) {
-      console.error('Failed to initialize map:', err);
+      logger.error('mapbox_boundary_initialization_failed', err);
       setError('Failed to initialize map. Please try again later.');
     }
   }, [highContrast, initialBoundary, handleDrawChange, handleDrawDelete, center, mapboxToken]);
@@ -272,8 +273,7 @@ export function BoundaryEditor({
 }
 
 // Custom draw styles based on high contrast mode
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getDrawStyles(highContrast: boolean): any[] {
+function getDrawStyles(highContrast: boolean): object[] {
   const color = highContrast ? '#ffff00' : '#3b82f6';
   const fillColor = highContrast ? 'rgba(255, 255, 0, 0.2)' : 'rgba(59, 130, 246, 0.2)';
 

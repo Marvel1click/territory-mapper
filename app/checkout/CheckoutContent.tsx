@@ -1,327 +1,55 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, CheckCircle2, Loader2, LockKeyhole, QrCode } from 'lucide-react';
 import { useAuth } from '@/app/hooks/useAuth';
-import { useTerritories, useHouses, useAssignments, useSync } from '@/app/hooks/useRxDB';
-import { useAccessibility } from '@/app/hooks/useAccessibility';
-import { generateId } from '@/app/lib/utils';
-import { logger } from '@/app/lib/utils/logger';
-import type { Territory } from '@/app/types';
-import { 
-  MapPin, 
-  CheckCircle2, 
-  AlertCircle, 
-  Loader2,
-  QrCode,
-  Calendar,
-  User,
-  ArrowRight,
-  Home,
-  Clock
-} from 'lucide-react';
+import { apiFetch, formatClientError } from '@/app/lib/api/client';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface CheckoutPreview {
+  territoryName: string;
+  congregationName: string;
+  expiresAt: string;
+}
 
 export function CheckoutContent() {
+  const token = useSearchParams().get('token');
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { isAuthenticated, user } = useAuth();
-  const { triggerHaptic, hapticPatterns } = useAccessibility();
-  
-  const territoryId = searchParams.get('t');
-  const token = searchParams.get('token');
-  
-  const { territories, isLoading: territoriesLoading } = useTerritories(user?.congregation_id);
-  const { houses } = useHouses(territoryId || undefined, user?.congregation_id);
-  const { assignments, addAssignment } = useAssignments(user?.congregation_id);
-  const { sync } = useSync(user?.congregation_id);
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [territory, setTerritory] = useState<Territory | null>(null);
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [checkoutComplete, setCheckoutComplete] = useState(false);
-  const [publisherName, setPublisherName] = useState(user?.full_name || '');
-  const [dueDate, setDueDate] = useState('');
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const [preview, setPreview] = useState<CheckoutPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [redeeming, setRedeeming] = useState(false);
+  const [complete, setComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Calculate default due date (14 days)
   useEffect(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 14);
-    setDueDate(date.toISOString().split('T')[0]);
-  }, []);
+    if (!token) { setError('This checkout link is missing its secure token.'); setLoading(false); return; }
+    let active = true;
+    apiFetch<{ checkout: CheckoutPreview }>(`/api/checkout-links/redeem?token=${encodeURIComponent(token)}`)
+      .then((response) => { if (active) setPreview(response.checkout); })
+      .catch((loadError) => { if (active) setError(formatClientError(loadError)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [token]);
 
-  // Find territory from URL param
-  useEffect(() => {
-    if (territoriesLoading) return;
-
-    if (!territoryId) {
-      setError('Invalid territory link - no territory specified');
-      setIsLoading(false);
-      return;
-    }
-
-    const found = territories.find(t => t.id === territoryId);
-    if (!found) {
-      setError('Territory not found. It may have been deleted or you may not have access.');
-      setIsLoading(false);
-      return;
-    }
-
-    // Check if territory is already checked out
-    const existingAssignment = assignments.find(
-      a => a.territory_id === territoryId && a.status === 'active'
-    );
-    
-    if (existingAssignment) {
-      setError(`This territory is already checked out by ${existingAssignment.publisher_name}`);
-      setIsLoading(false);
-      return;
-    }
-
-    setTerritory(found);
-    setIsLoading(false);
-  }, [territoryId, territories, territoriesLoading, assignments]);
-
-  const handleCheckout = async () => {
+  const redeem = async () => {
+    if (!token) return;
     if (!isAuthenticated) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.href)}`);
+      router.push(`/login?redirect=${encodeURIComponent(`/checkout?token=${token}`)}`);
       return;
     }
-
-    if (!territory || !user?.congregation_id) {
-      setError('Unable to process checkout. Please try again.');
-      return;
-    }
-
-    if (!publisherName.trim()) {
-      setError('Please enter your name');
-      return;
-    }
-
-    setIsCheckingOut(true);
-    setError('');
-
+    setRedeeming(true); setError(null);
     try {
-      // Create assignment
-      const newAssignment = {
-        id: generateId(),
-        territory_id: territory.id,
-        publisher_id: user.id,
-        publisher_name: publisherName.trim(),
-        congregation_id: user.congregation_id,
-        checked_out_at: new Date().toISOString(),
-        checked_out_by: user.id,
-        due_date: new Date(dueDate).toISOString(),
-        status: 'active' as const,
-        qr_token: token || generateId(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      await addAssignment(newAssignment);
-      await sync();
-      
-      setCheckoutComplete(true);
-      triggerHaptic(hapticPatterns.success);
-      
-      // Redirect to publisher view after 2 seconds
-      setTimeout(() => {
-        router.push('/publisher');
-      }, 2000);
-    } catch (err) {
-      logger.error('Checkout failed:', err);
-      setError('Failed to check out territory. Please try again.');
-      triggerHaptic(hapticPatterns.error);
-    } finally {
-      setIsCheckingOut(false);
-    }
+      await apiFetch('/api/checkout-links/redeem', { method: 'POST', body: JSON.stringify({ token, mutationId: crypto.randomUUID() }) });
+      setComplete(true);
+      window.setTimeout(() => router.push('/field'), 1200);
+    } catch (redeemError) { setError(formatClientError(redeemError)); }
+    finally { setRedeeming(false); }
   };
 
-  // Calculate stats
-  const houseCount = houses.length;
-  const estimatedHours = Math.ceil(houseCount * 2 / 60); // ~2 min per house
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading territory...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-destructive/10 rounded-full flex items-center justify-center">
-            <AlertCircle className="w-8 h-8 text-destructive" />
-          </div>
-          <h1 className="text-xl font-bold mb-2">Unable to Checkout</h1>
-          <p className="text-muted-foreground mb-6">{error}</p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
-          >
-            Go Home
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (checkoutComplete) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-green-500/10 rounded-full flex items-center justify-center">
-            <CheckCircle2 className="w-8 h-8 text-green-500" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Territory Checked Out!</h1>
-          <p className="text-muted-foreground mb-6">
-            You have successfully checked out <strong>{territory?.name}</strong>.
-            Redirecting to your territories...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-muted/30">
-      <div className="max-w-md w-full">
-        {/* Territory Card */}
-        <div className="bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-primary/5 p-6 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-              <QrCode className="w-8 h-8 text-primary" />
-            </div>
-            <h1 className="text-xl font-bold mb-1">Territory Checkout</h1>
-            <p className="text-sm text-muted-foreground">
-              Scan successful! Review the territory details below.
-            </p>
-          </div>
-
-          {/* Territory Info */}
-          <div className="p-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="p-3 bg-primary/10 rounded-xl">
-                <MapPin className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">{territory?.name}</h2>
-                {territory?.description && (
-                  <p className="text-sm text-muted-foreground">{territory.description}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-4 bg-muted rounded-xl">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Home className="w-4 h-4" />
-                  <span className="text-sm">Houses</span>
-                </div>
-                <p className="text-2xl font-bold">{houseCount}</p>
-              </div>
-              <div className="p-4 bg-muted rounded-xl">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Calendar className="w-4 h-4" />
-                  <span className="text-sm">Due Date</span>
-                </div>
-                <p className="text-lg font-bold">
-                  {new Date(dueDate).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-
-            {/* Publisher Info */}
-            {isAuthenticated ? (
-              <div className="space-y-4 mb-6">
-                <div className="flex items-center gap-3 p-4 bg-muted rounded-xl">
-                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{user?.full_name || user?.email}</p>
-                    <p className="text-sm text-muted-foreground">Will be assigned to you</p>
-                  </div>
-                </div>
-                
-                {/* Publisher Name Input (allow editing) */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Your Name</label>
-                  <input
-                    type="text"
-                    value={publisherName}
-                    onChange={(e) => setPublisherName(e.target.value)}
-                    placeholder="Enter your name"
-                    className="w-full px-4 py-3 rounded-lg border border-input bg-background"
-                  />
-                </div>
-
-                {/* Due Date Input */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Due Date</label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-4 py-3 rounded-lg border border-input bg-background"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    Estimated time: {estimatedHours} hour{estimatedHours !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-amber-500/10 rounded-xl mb-6">
-                <p className="text-sm text-amber-700">
-                  You need to sign in before checking out this territory.
-                </p>
-              </div>
-            )}
-
-            {/* Actions */}
-            <button
-              onClick={handleCheckout}
-              disabled={isCheckingOut || (isAuthenticated && !publisherName.trim())}
-              className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isCheckingOut ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Checking out...
-                </>
-              ) : (
-                <>
-                  {isAuthenticated ? 'Check Out Territory' : 'Sign In to Check Out'}
-                  <ArrowRight className="w-5 h-5" />
-                </>
-              )}
-            </button>
-
-            {!isAuthenticated && (
-              <p className="mt-4 text-sm text-muted-foreground text-center">
-                You&apos;ll be redirected to sign in first
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Back Link */}
-        <div className="text-center mt-6">
-          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Cancel and return home
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  return <main id="main-content" className="grid min-h-dvh place-items-center px-4 py-12"><Card className="w-full max-w-lg"><CardHeader className="text-center"><span className="mx-auto mb-3 grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary">{complete ? <CheckCircle2 aria-hidden="true" className="size-8" /> : <QrCode aria-hidden="true" className="size-8" />}</span><CardTitle className="text-2xl" role="heading" aria-level={1}>{complete ? 'Territory checked out' : 'Secure territory checkout'}</CardTitle><CardDescription>{complete ? 'Downloading your assignment in field mode…' : 'One-time, expiring, and congregation-scoped.'}</CardDescription></CardHeader><CardContent>{loading ? <div role="status" className="flex justify-center gap-2 py-10 text-muted-foreground"><Loader2 aria-hidden="true" className="animate-spin" /> Validating link…</div> : error && !preview ? <Alert variant="destructive"><AlertTriangle aria-hidden="true" /><AlertTitle>Link unavailable</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : complete ? <Button className="w-full" asChild><Link href="/field">Open field mode</Link></Button> : preview ? <div className="space-y-5"><div className="rounded-2xl border bg-muted/50 p-5"><p className="text-sm font-semibold text-muted-foreground">Territory</p><p className="text-xl font-bold">{preview.territoryName}</p><p className="mt-3 text-sm font-semibold text-muted-foreground">Congregation</p><p className="font-bold">{preview.congregationName}</p><p className="mt-3 text-sm text-muted-foreground">Link expires {new Date(preview.expiresAt).toLocaleString()}</p></div>{error ? <p role="alert" className="text-sm font-semibold text-destructive">{error}</p> : null}<Button className="w-full" disabled={redeeming || authLoading} onClick={() => void redeem()}>{redeeming || authLoading ? <Loader2 aria-hidden="true" className="animate-spin" /> : <LockKeyhole aria-hidden="true" />}{isAuthenticated ? 'Check out to me' : 'Sign in to continue'}</Button><p className="text-center text-xs text-muted-foreground">The token is hashed at rest and becomes unusable after checkout.</p></div> : null}</CardContent></Card></main>;
 }

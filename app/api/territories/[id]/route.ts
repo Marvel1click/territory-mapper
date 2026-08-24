@@ -1,215 +1,119 @@
-/**
- * Individual Territory API Routes
- * 
- * GET /api/territories/[id] - Get a specific territory
- * PUT /api/territories/[id] - Update a territory
- * DELETE /api/territories/[id] - Delete a territory
- */
-
-import { NextRequest, NextResponse } from 'next/server';
+import { AppError, apiErrorResponse, apiSuccess, getRequestId, toAppError } from '@/app/lib/api/errors';
+import { assertSameOrigin, parseJson, throttleMutation } from '@/app/lib/api/request';
+import { requireAuthContext } from '@/app/lib/auth/context';
 import { createClient } from '@/app/lib/db/supabase/server';
 import { getTerritoryCenter } from '@/app/lib/utils';
-import { logger } from '@/app/lib/utils/logger';
-import { validateString, validateBoundary, validateColor, validateTerritoryStatus, MAX_LENGTHS } from '@/app/lib/utils/validation';
-import type { Territory } from '@/app/types';
+import { updateTerritorySchema } from '@/app/lib/validation/schemas';
 
-// GET /api/territories/[id]
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   try {
+    const context = await requireAuthContext();
     const { id } = await params;
     const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const congregationId = user.user_metadata.congregation_id;
-
-    const { data: territory, error } = await supabase
+    const { data, error } = await supabase
       .from('territories')
       .select('*')
       .eq('id', id)
-      .eq('congregation_id', congregationId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json(
-          { error: 'Territory not found' },
-          { status: 404 }
-        );
-      }
-      throw error;
-    }
-
-    return NextResponse.json({ territory });
+      .eq('congregation_id', context.membership.congregation_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AppError('NOT_FOUND', 'Territory not found.', 404);
+    return apiSuccess({ territory: data }, requestId);
   } catch (error) {
-    logger.error('Error fetching territory:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(toAppError(error), requestId);
   }
 }
 
-// PUT /api/territories/[id]
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   try {
+    assertSameOrigin(request);
+    const context = await requireAuthContext(['admin', 'overseer']);
+    throttleMutation(context.userId, 'territory-update');
+    const input = await parseJson(request, updateTerritorySchema);
     const { id } = await params;
-    const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const role = user.user_metadata.role;
-    if (role !== 'overseer' && role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    const congregationId = user.user_metadata.congregation_id;
-    const body = await request.json();
-
-    // Validate inputs
-    if (body.name !== undefined && !validateString(body.name, MAX_LENGTHS.name)) {
-      return NextResponse.json({ error: `Name must be at most ${MAX_LENGTHS.name} characters` }, { status: 400 });
-    }
-    if (body.description !== undefined && body.description !== null && !validateString(body.description, MAX_LENGTHS.description)) {
-      return NextResponse.json({ error: `Description must be at most ${MAX_LENGTHS.description} characters` }, { status: 400 });
-    }
-    if (body.boundary !== undefined && !validateBoundary(body.boundary)) {
-      return NextResponse.json({ error: 'Invalid boundary: must be a valid GeoJSON Polygon' }, { status: 400 });
-    }
-    if (body.color !== undefined && !validateColor(body.color)) {
-      return NextResponse.json({ error: 'Invalid color: must be a hex color' }, { status: 400 });
-    }
-    if (body.status !== undefined && !validateTerritoryStatus(body.status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
-    }
-
-    // Build update object
-    const updates: Partial<Territory> & { updated_at: string } = {
-      updated_at: new Date().toISOString(),
+    const { version, ...changes } = input;
+    const updates = {
+      ...changes,
+      ...(changes.boundary ? { center: getTerritoryCenter(changes.boundary.coordinates) } : {}),
+      last_mutation_id: crypto.randomUUID(),
     };
-
-    if (body.name !== undefined) updates.name = body.name.trim();
-    if (body.description !== undefined) updates.description = body.description?.trim() || null;
-    if (body.boundary !== undefined) {
-      updates.boundary = body.boundary;
-      updates.center = getTerritoryCenter(body.boundary.coordinates);
-    }
-    if (body.color !== undefined) updates.color = body.color;
-    if (body.status !== undefined) updates.status = body.status;
-
-    const { data: territory, error } = await supabase
+    const supabase = await createClient();
+    const { data, error } = await supabase
       .from('territories')
       .update(updates)
       .eq('id', id)
-      .eq('congregation_id', congregationId)
-      .select()
-      .single();
-
-    if (error) {
-      logger.error('Error updating territory:', error);
-      return NextResponse.json(
-        { error: 'Failed to update territory' },
-        { status: 500 }
-      );
+      .eq('congregation_id', context.membership.congregation_id)
+      .eq('version', version)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const { data: current } = await supabase
+        .from('territories')
+        .select('id')
+        .eq('id', id)
+        .eq('congregation_id', context.membership.congregation_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (current) {
+        throw new AppError(
+          'CONFLICT',
+          'This territory changed elsewhere. Refresh, review the latest boundary, then reapply your edit.',
+          409,
+        );
+      }
+      throw new AppError('NOT_FOUND', 'Territory not found.', 404);
     }
-
-    return NextResponse.json({ territory });
+    return apiSuccess({ territory: data }, requestId);
   } catch (error) {
-    logger.error('Error updating territory:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(toAppError(error), requestId);
   }
 }
 
-// DELETE /api/territories/[id]
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(request);
   try {
+    assertSameOrigin(request);
+    const context = await requireAuthContext(['admin', 'overseer']);
+    throttleMutation(context.userId, 'territory-delete');
     const { id } = await params;
     const supabase = await createClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const role = user.user_metadata.role;
-    if (role !== 'overseer' && role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    const congregationId = user.user_metadata.congregation_id;
-
-    // Check if territory has active assignments
-    const { data: activeAssignments } = await supabase
+    const { data: active } = await supabase
       .from('assignments')
       .select('id')
       .eq('territory_id', id)
       .eq('status', 'active')
+      .is('deleted_at', null)
       .limit(1);
-
-    if (activeAssignments && activeAssignments.length > 0) {
-      return NextResponse.json(
-        { error: 'Cannot delete territory with active assignments' },
-        { status: 400 }
-      );
+    if (active?.length) {
+      throw new AppError('CONFLICT', 'Return the active assignment before archiving this territory.', 409);
     }
-
-    // Delete territory (houses will be cascade deleted via foreign key)
-    const { error } = await supabase
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
       .from('territories')
-      .delete()
+      .update({ deleted_at: now, last_mutation_id: crypto.randomUUID() })
       .eq('id', id)
-      .eq('congregation_id', congregationId);
-
-    if (error) {
-      logger.error('Error deleting territory:', error);
-      return NextResponse.json(
-        { error: 'Failed to delete territory' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
+      .eq('congregation_id', context.membership.congregation_id)
+      .is('deleted_at', null)
+      .select('id,deleted_at')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AppError('NOT_FOUND', 'Territory not found.', 404);
+    return apiSuccess({ territory: data }, requestId);
   } catch (error) {
-    logger.error('Error deleting territory:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(toAppError(error), requestId);
   }
 }

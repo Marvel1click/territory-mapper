@@ -73,7 +73,7 @@ INSERT INTO territories (
     ]]
   }'::jsonb,
   '[-73.925, 40.765]'::jsonb,
-  'out',
+  'in-stock',
   '#f59e0b',
   '00000000-0000-0000-0000-000000000000'
 )
@@ -88,7 +88,7 @@ INSERT INTO houses (
 ('house-002', 'territory-001', '550e8400-e29b-41d4-a716-446655440000', '125 Orchard St, New York, NY 10002', '[-73.989, 40.718]', 'nah', 'Not home on weekdays', false),
 ('house-003', 'territory-001', '550e8400-e29b-41d4-a716-446655440000', '127 Orchard St, New York, NY 10002', '[-73.988, 40.718]', 'interest', 'Interested in Bible study', false),
 ('house-004', 'territory-001', '550e8400-e29b-41d4-a716-446655440000', '129 Orchard St, New York, NY 10002', '[-73.987, 40.718]', 'return-visit', 'Return visit scheduled', false),
-('house-005', 'territory-001', '550e8400-e29b-41d4-a716-446655440000', '131 Orchard St, New York, NY 10002', '[-73.986, 40.718]', 'dnc', null, true),
+('house-005', 'territory-001', '550e8400-e29b-41d4-a716-446655440000', '131 Orchard St, New York, NY 10002', '[-73.986, 40.718]', 'not-visited', null, false),
 
 -- Brooklyn houses
 ('house-006', 'territory-002', '550e8400-e29b-41d4-a716-446655440000', '456 Bedford Ave, Brooklyn, NY 11211', '[-73.964, 40.715]', 'not-visited', null, false),
@@ -99,27 +99,37 @@ INSERT INTO houses (
 -- Queens houses
 ('house-010', 'territory-003', '550e8400-e29b-41d4-a716-446655440000', '789 30th Ave, Astoria, NY 11102', '[-73.929, 40.765]', 'not-visited', null, false),
 ('house-011', 'territory-003', '550e8400-e29b-41d4-a716-446655440000', '791 30th Ave, Astoria, NY 11102', '[-73.928, 40.765]', 'not-visited', null, false),
-('house-012', 'territory-003', '550e8400-e29b-41d4-a716-446655440000', '793 30th Ave, Astoria, NY 11102', '[-73.927, 40.765]', 'dnc', null, true)
+('house-012', 'territory-003', '550e8400-e29b-41d4-a716-446655440000', '793 30th Ave, Astoria, NY 11102', '[-73.927, 40.765]', 'not-visited', null, false)
 ON CONFLICT (id) DO NOTHING;
 
 -- Create a sample assignment (territory-003 checked out)
 INSERT INTO assignments (
   id, territory_id, publisher_id, publisher_name, congregation_id, 
-  checked_out_by, due_date, status, qr_token
+  checked_out_by, due_date, status
 )
 SELECT
   'assignment-001',
   'territory-003',
   auth.users.id,
-  COALESCE(auth.users.raw_user_meta_data->>'full_name', 'Demo User'),
+  COALESCE(NULLIF(profiles.full_name, ''), profiles.email::TEXT, 'Demo User'),
   '550e8400-e29b-41d4-a716-446655440000',
   auth.users.id,
   NOW() + INTERVAL '14 days',
-  'active',
-  'demo-qr-token-123'
+  'active'
 FROM auth.users
+LEFT JOIN profiles ON profiles.id = auth.users.id
 WHERE auth.users.email = 'demo@example.com'
 ON CONFLICT (id) DO NOTHING;
+
+UPDATE territories
+SET status = 'out'
+WHERE id = 'territory-003'
+  AND EXISTS (
+    SELECT 1 FROM assignments
+    WHERE territory_id = 'territory-003'
+      AND status = 'active'
+      AND deleted_at IS NULL
+  );
 
 -- Add comments
 COMMENT ON TABLE territories IS 'Stores territory boundaries and metadata';

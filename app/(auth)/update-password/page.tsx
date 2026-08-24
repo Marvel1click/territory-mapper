@@ -1,167 +1,112 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MapPin, Loader2, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole } from 'lucide-react';
 import { updatePassword } from '@/app/lib/auth/supabase';
+import { getSupabaseClient } from '@/app/lib/db/supabase/client';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [linkExpired, setLinkExpired] = useState(false);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [updated, setUpdated] = useState(false);
 
   useEffect(() => {
-    // Check if user has a valid session for password reset
-    const checkSession = async () => {
-      const { data: { session } } = await import('@/app/lib/db/supabase/client').then(m => m.supabase.auth.getSession());
-      if (!session) {
-        setError('Your reset link has expired. Please request a new one.');
+    let active = true;
+    const checkRecoverySession = async () => {
+      const client = getSupabaseClient();
+      if (!client) {
+        if (active) setError('Authentication service is not configured.');
+        return;
       }
+      const { data } = await client.auth.getSession();
+      if (active && !data.session) setLinkExpired(true);
     };
-    checkSession();
+    void checkRecoverySession();
+    return () => { active = false; };
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
-    setSuccessMessage('');
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (password !== confirmation) {
+      setError('The passwords do not match.');
       return;
     }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (password.length < 12) {
+      setError('Use at least 12 characters.');
       return;
     }
-
-    setIsLoading(true);
-
+    setLoading(true);
     try {
       await updatePassword(password);
-      setSuccessMessage('Password updated successfully! Redirecting...');
-      setTimeout(() => router.push('/login'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update password');
+      setUpdated(true);
+      window.setTimeout(() => router.replace('/login'), 1500);
+    } catch {
+      setError('The password could not be updated. Request a fresh recovery link and try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-            <MapPin className="w-6 h-6 text-primary" />
-            <span>Territory Mapper</span>
-          </Link>
-        </div>
-      </header>
-
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-card p-8 rounded-2xl border border-border shadow-sm">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold mb-2">Update Password</h1>
-              <p className="text-muted-foreground">
-                Enter your new password below.
-              </p>
-            </div>
-
-            {error && (
-              <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
-                {error}
-                {error.includes('expired') && (
-                  <div className="mt-3">
-                    <Link href="/forgot-password" className="text-primary hover:underline font-medium">
-                      Request new reset link
-                    </Link>
-                  </div>
-                )}
+    <main id="main-content" className="grid min-h-dvh place-items-center px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <Link href="/" className="mx-auto flex w-fit items-center gap-3 text-xl font-bold">
+          <Image src="/icons/icon-192x192.png" width={44} height={44} alt="" priority />
+          Territory Mapper
+        </Link>
+        <Card className="surface-calm">
+          <CardHeader>
+            <span className="mb-2 grid size-11 place-items-center rounded-xl bg-primary/10 text-primary"><LockKeyhole aria-hidden="true" /></span>
+            <CardTitle className="text-3xl" role="heading" aria-level={1}>Choose a new password</CardTitle>
+            <CardDescription>Use a unique passphrase with at least 12 characters.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error ? <Alert variant="destructive" role="alert" className="mb-5"><AlertTitle>Update unsuccessful</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+            {updated ? <Alert className="mb-5"><CheckCircle2 aria-hidden="true" /><AlertTitle>Password updated</AlertTitle><AlertDescription>Returning to sign in…</AlertDescription></Alert> : null}
+            {linkExpired ? (
+              <div className="space-y-4">
+                <p className="rounded-xl border bg-muted/55 p-4 text-sm">This recovery link has expired or was already used.</p>
+                <Button asChild className="w-full"><Link href="/forgot-password">Request a new recovery link</Link></Button>
               </div>
-            )}
-
-            {successMessage && (
-              <div className="mb-6 p-4 bg-green-100 border border-green-300 rounded-lg text-green-800 text-sm">
-                {successMessage}
-              </div>
-            )}
-
-            {!error?.includes('expired') && (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium mb-2">
-                    New Password
-                  </label>
+            ) : (
+              <form className="space-y-5" onSubmit={submit}>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New password</Label>
                   <div className="relative">
-                    <input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={8}
-                      className="w-full px-4 py-3 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all pr-12"
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
+                    <Input id="new-password" type={visible ? 'text' : 'password'} autoComplete="new-password" minLength={12} required value={password} onChange={(event) => setPassword(event.target.value)} className="pr-12" aria-describedby="password-help" />
+                    <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0" aria-label={visible ? 'Hide passwords' : 'Show passwords'} onClick={() => setVisible((value) => !value)}>
+                      {visible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                    </Button>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Must be at least 8 characters
-                  </p>
+                  <p id="password-help" className="text-xs text-muted-foreground">At least 12 characters; a memorable multi-word passphrase works well.</p>
                 </div>
-
-                <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2">
-                    Confirm New Password
-                  </label>
-                  <input
-                    id="confirmPassword"
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm new password</Label>
+                  <Input id="confirm-password" type={visible ? 'text' : 'password'} autoComplete="new-password" minLength={12} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    'Update Password'
-                  )}
-                </button>
+                <Button className="w-full" size="lg" type="submit" disabled={loading || updated}>
+                  {loading ? <Loader2 aria-hidden="true" className="animate-spin" /> : <LockKeyhole aria-hidden="true" />}
+                  {loading ? 'Updating…' : 'Update password'}
+                </Button>
               </form>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </main>
   );
 }

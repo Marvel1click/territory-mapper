@@ -1,159 +1,170 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { getSupabaseClient } from '@/app/lib/db/supabase/client';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { getSupabaseClient } from '@/app/lib/db/supabase/client';
 import type { UserProfile } from '@/app/types';
 import { logger } from '@/app/lib/utils/logger';
 
-export function useAuth() {
+interface MeResponse {
+  profile: UserProfile;
+}
+
+async function fetchProfile(): Promise<UserProfile> {
+  const response = await fetch('/api/me', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 401
+        ? 'Your session has expired. Please sign in again.'
+        : 'Your membership could not be loaded.',
+    );
+  }
+  const body = (await response.json()) as MeResponse;
+  return body.profile;
+}
+
+async function clearUserCaches(): Promise<void> {
+  const [{ resetDatabase }, { resetReplicationStatus }, { useSyncStore }] = await Promise.all([
+    import('@/app/lib/db/rxdb'),
+    import('@/app/lib/db/replication/supabase'),
+    import('@/app/lib/store'),
+  ]);
+  await resetDatabase();
+  resetReplicationStatus();
+  useSyncStore.getState().resetSyncState();
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((key) => key.startsWith('territory-mapper-user-'))
+        .map((key) => caches.delete(key)),
+    );
+  }
+}
+
+function useAuthController() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshProfile = useCallback(async (session: Session | null) => {
+    if (!session?.user) {
+      setUser(null);
+      return;
+    }
+    const profile = await fetchProfile();
+    setUser(profile);
+  }, []);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-    
-    // If Supabase client is not available, skip auth initialization
     if (!supabase) {
-      console.warn('Supabase client not available. Auth functionality disabled.');
+      setError('Authentication service is not configured.');
       setIsLoading(false);
-      setError('Authentication service not configured');
       return;
     }
 
-    // Get initial session
-    const initAuth = async () => {
+    let active = true;
+    const initialize = async () => {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          logger.error('Session error:', sessionError);
-          setError(sessionError.message);
-        } else if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            full_name: session.user.user_metadata.full_name || '',
-            role: session.user.user_metadata.role || 'publisher',
-            congregation_id: session.user.user_metadata.congregation_id || '',
-            phone: session.user.user_metadata.phone || '',
-            created_at: session.user.created_at,
-            updated_at: session.user.updated_at || session.user.created_at,
-          });
-          setIsAuthenticated(true);
-        }
-      } catch (err) {
-        logger.error('Auth initialization error:', err);
-        setError(err instanceof Error ? err.message : 'Unknown auth error');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (active) await refreshProfile(session);
+      } catch (authError) {
+        logger.error('Auth initialization failed', authError);
+        if (active) setError(authError instanceof Error ? authError.message : 'Sign-in failed.');
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
+    void initialize();
 
-    initAuth();
-
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          full_name: session.user.user_metadata.full_name || '',
-          role: session.user.user_metadata.role || 'publisher',
-          congregation_id: session.user.user_metadata.congregation_id || '',
-          phone: session.user.user_metadata.phone || '',
-          created_at: session.user.created_at,
-          updated_at: session.user.updated_at || session.user.created_at,
-        });
-        setIsAuthenticated(true);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-      }
-      setIsLoading(false);
-    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event: AuthChangeEvent, session: Session | null) => {
+        void (async () => {
+          try {
+            await refreshProfile(session);
+            setError(null);
+          } catch (authError) {
+            logger.error('Membership refresh failed', authError);
+            setUser(null);
+            setError(authError instanceof Error ? authError.message : 'Membership unavailable.');
+          } finally {
+            setIsLoading(false);
+          }
+        })();
+      },
+    );
 
     return () => {
+      active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [refreshProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      throw new Error('Authentication service not configured');
-    }
-    
+    if (!supabase) throw new Error('Authentication service is not configured.');
     setIsLoading(true);
     setError(null);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign in';
-      setError(message);
-      throw err;
-    } finally {
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
       setIsLoading(false);
-    }
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string, metadata: Record<string, unknown>) => {
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      throw new Error('Authentication service not configured');
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: metadata },
-      });
-      if (error) throw error;
-      
-      // onAuthStateChange listener will update the state automatically
-      return data;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign up';
-      setError(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
+      setError(signInError.message);
+      throw signInError;
     }
   }, []);
 
   const signOut = useCallback(async () => {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      throw new Error('Authentication service not configured');
-    }
-    
+    if (!supabase) throw new Error('Authentication service is not configured.');
     setIsLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      setUser(null);
-      setIsAuthenticated(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to sign out';
-      setError(message);
-      throw err;
-    } finally {
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
       setIsLoading(false);
+      throw signOutError;
     }
+    await clearUserCaches();
+    setUser(null);
+    setIsLoading(false);
   }, []);
 
   return {
     user,
     isLoading,
-    isAuthenticated,
+    isAuthenticated: Boolean(user),
     error,
     signIn,
-    signUp,
     signOut,
   };
+}
+
+type AuthContextValue = ReturnType<typeof useAuthController>;
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const auth = useAuthController();
+  return createElement(AuthContext.Provider, { value: auth }, children);
+}
+
+export function useAuth(): AuthContextValue {
+  const auth = useContext(AuthContext);
+  if (!auth) {
+    throw new Error('useAuth must be used within AuthProvider.');
+  }
+  return auth;
 }

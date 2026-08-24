@@ -1,0 +1,91 @@
+name: Quality and release readiness
+
+on:
+  pull_request:
+  push:
+    branches: [master, "codex/**"]
+
+permissions:
+  contents: read
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: synthetic-service-role-key
+  DNC_ENCRYPTION_KEY_VERSION: "1"
+  DNC_ENCRYPTION_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run security:audit
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: .next
+          include-hidden-files: true
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - run: supabase test db
+
+  browser:
+    runs-on: ubuntu-latest
+    needs: application
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL || 'https://example.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY || 'synthetic-anon-key' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY || 'synthetic-service-role-key' }}
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${{ secrets.STAGING_MAPBOX_TOKEN }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_PUBLISHER_EMAIL: ${{ secrets.E2E_PUBLISHER_EMAIL }}
+      E2E_PUBLISHER_PASSWORD: ${{ secrets.E2E_PUBLISHER_PASSWORD }}
+      E2E_INVITEE_EMAIL: ${{ secrets.E2E_INVITEE_EMAIL }}
+      E2E_INVITEE_PASSWORD: ${{ secrets.E2E_INVITEE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e -- --project=chromium
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+      - if: steps.dependency-review.outcome == 'failure'
+        run: echo "::warning::GitHub Dependency Graph is unavailable; the enforced npm audit gate still covers dependency vulnerabilities."

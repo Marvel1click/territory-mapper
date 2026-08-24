@@ -2,122 +2,103 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/app/hooks/useAuth';
-import { useUIStore } from '@/app/lib/store';
-import { cn } from '@/app/lib/utils';
 import {
+  ClipboardCheck,
   LayoutDashboard,
   Map,
-  Users,
+  MapPinned,
+  RotateCcw,
   Settings,
-  X,
-  Sparkles,
+  Users,
+  BarChart3,
 } from 'lucide-react';
+import { useAuth } from '@/app/hooks/useAuth';
+import { cn } from '@/app/lib/utils';
 
-const overseerLinks = [
-  { href: '/overseer', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/overseer/territories', label: 'Territories', icon: Map },
-  { href: '/overseer/assignments', label: 'Assignments', icon: Users },
-  { href: '/overseer/getting-started', label: 'Getting Started', icon: Sparkles },
-  { href: '/settings', label: 'Settings', icon: Settings },
+const managerLinks = [
+  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/dashboard/territories', label: 'Territories', icon: Map },
+  { href: '/dashboard/assignments', label: 'Assignments', icon: ClipboardCheck },
+  { href: '/dashboard/members', label: 'Members', icon: Users },
+  { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
 const publisherLinks = [
-  { href: '/publisher', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/publisher/territory', label: 'My Territory', icon: Map },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/field', label: 'My territories', shortLabel: 'Field', icon: MapPinned },
+  { href: '/field/return-visits', label: 'Return visits', shortLabel: 'Returns', icon: RotateCcw },
+  { href: '/field/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
+
+type NavigationLink = {
+  href: string;
+  label: string;
+  shortLabel?: string;
+  icon: typeof LayoutDashboard;
+};
 
 export function Navigation() {
   const pathname = usePathname();
-  const { user, isAuthenticated } = useAuth();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { user } = useAuth();
+  const links: NavigationLink[] = user?.role === 'publisher' ? publisherLinks : managerLinks;
 
-  if (!isAuthenticated) return null;
-
-  const links = user?.role === 'overseer' || user?.role === 'admin' 
-    ? overseerLinks 
-    : publisherLinks;
+  const activeFor = (href: string) =>
+    pathname === href || href !== '/dashboard' && href !== '/field' && pathname.startsWith(`${href}/`);
 
   return (
     <>
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden transition-opacity duration-200"
-          onClick={toggleSidebar}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          'fixed left-0 top-14 sm:top-16 z-40 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] w-64 bg-card border-r border-border',
-          'transform transition-transform duration-200 ease-in-out',
-          'md:translate-x-0 overflow-hidden',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-        role="navigation"
-        aria-label="Main navigation"
-      >
-        <div className="flex flex-col h-full p-4 sm:p-5 overflow-y-auto scrollbar-thin">
-          {/* Close button - mobile only */}
-          <button
-            onClick={toggleSidebar}
-            className="md:hidden absolute top-3 right-3 p-2.5 rounded-lg hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Close menu"
-          >
-            <X className="w-5 h-5" aria-hidden="true" />
-          </button>
-
-          {/* User info */}
-          <div className="mb-6 p-4 bg-accent/50 rounded-xl border border-border/50">
-            <p className="font-semibold truncate text-foreground">{user?.full_name || user?.email}</p>
-            <p className="text-sm text-muted-foreground capitalize mt-0.5">{user?.role}</p>
-          </div>
-
-          {/* Navigation links */}
-          <nav className="flex-1 space-y-1.5 overflow-y-auto scrollbar-thin">
-            {links.map((link) => {
-              const Icon = link.icon;
-              // Only do prefix matching for non-dashboard routes to prevent
-              // dashboard from highlighting when on sub-pages like /overseer/assignments
-              const isDashboardRoot = link.href === '/overseer' || link.href === '/publisher';
-              const isActive = pathname === link.href || 
-                (!isDashboardRoot && pathname.startsWith(`${link.href}/`));
-
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => {
-                    if (window.innerWidth < 768) toggleSidebar();
-                  }}
-                  className={cn(
-                    'flex items-center gap-3 px-3 sm:px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-                    'min-h-[48px] focus-visible:ring-2 focus-visible:ring-ring outline-none',
-                    isActive
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                  <span className="truncate">{link.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Footer info */}
-          <div className="mt-auto pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground text-center px-2 py-2">
-              Territory Mapper <span className="opacity-75">v1.0</span>
-            </p>
-          </div>
+      <aside className="sticky top-18 hidden h-[calc(100dvh-4.5rem)] w-64 shrink-0 border-r px-4 py-6 md:block">
+        <nav aria-label="Workspace navigation" className="space-y-1.5">
+          {links.map(({ href, label, icon: Icon }) => {
+            const active = activeFor(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex min-h-12 items-center gap-3 rounded-xl px-3 font-semibold transition-colors',
+                  active
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                )}
+              >
+                <Icon aria-hidden="true" className="size-5" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="mt-8 rounded-2xl border bg-muted/50 p-4 text-sm text-muted-foreground">
+          <p className="font-bold text-foreground">{user?.congregation?.name ?? 'Your congregation'}</p>
+          <p className="mt-1 capitalize">{user?.role} access</p>
         </div>
       </aside>
+
+      <nav
+        aria-label="Field navigation"
+        className="safe-area-bottom fixed inset-x-0 bottom-0 z-50 grid border-t bg-card/95 px-2 pt-2 backdrop-blur-xl md:hidden"
+        style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
+      >
+        {links.map(({ href, label, shortLabel, icon: Icon }) => {
+          const active = activeFor(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-label={label}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-xs font-bold',
+                active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+              )}
+            >
+              <Icon aria-hidden="true" className="size-5" />
+              <span className="max-w-full truncate">{shortLabel ?? label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

@@ -1,111 +1,66 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { MapPin, Loader2, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2, MailCheck } from 'lucide-react';
 import { resetPassword } from '@/app/lib/auth/supabase';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [sent, setSent] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
-    setSuccessMessage('');
-    setIsLoading(true);
-
+    setLoading(true);
     try {
       await resetPassword(email);
-      setSuccessMessage('Password reset instructions have been sent to your email.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reset email');
+      setSent(true);
+    } catch {
+      setError('We could not request a recovery link. Check your connection and try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-            <MapPin className="w-6 h-6 text-primary" />
-            <span>Territory Mapper</span>
-          </Link>
-        </div>
-      </header>
-
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-card p-8 rounded-2xl border border-border shadow-sm">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold mb-2">Reset Password</h1>
-              <p className="text-muted-foreground">
-                Enter your email and we&apos;ll send you instructions to reset your password.
-              </p>
-            </div>
-
-            {error && (
-              <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
-                {error}
+    <main id="main-content" className="grid min-h-dvh place-items-center px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <Link href="/" className="mx-auto flex w-fit items-center gap-3 text-xl font-bold">
+          <Image src="/icons/icon-192x192.png" width={44} height={44} alt="" priority />
+          Territory Mapper
+        </Link>
+        <Card className="surface-calm">
+          <CardHeader>
+            <span className="mb-2 grid size-11 place-items-center rounded-xl bg-primary/10 text-primary"><MailCheck aria-hidden="true" /></span>
+            <CardTitle className="text-3xl" role="heading" aria-level={1}>Recover your password</CardTitle>
+            <CardDescription>We will email recovery instructions if the address belongs to an existing account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error ? <Alert variant="destructive" role="alert" className="mb-5"><AlertTitle>Request unsuccessful</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+            {sent ? <Alert className="mb-5"><MailCheck aria-hidden="true" /><AlertTitle>Check your inbox</AlertTitle><AlertDescription>If the account exists, its recovery instructions are on the way.</AlertDescription></Alert> : null}
+            <form className="space-y-5" onSubmit={submit}>
+              <div className="space-y-2">
+                <Label htmlFor="recovery-email">Email address</Label>
+                <Input id="recovery-email" type="email" autoComplete="email" inputMode="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
               </div>
-            )}
-
-            {successMessage && (
-              <div className="mb-6 p-4 bg-green-100 border border-green-300 rounded-lg text-green-800 text-sm">
-                {successMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium mb-2">
-                  Email Address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  'Send Reset Instructions'
-                )}
-              </button>
+              <Button className="w-full" size="lg" type="submit" disabled={loading}>
+                {loading ? <Loader2 aria-hidden="true" className="animate-spin" /> : <MailCheck aria-hidden="true" />}
+                {loading ? 'Requesting…' : 'Send recovery link'}
+              </Button>
             </form>
-
-            <div className="mt-6">
-              <Link
-                href="/login"
-                className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Sign In
-              </Link>
-            </div>
-          </div>
-        </div>
+            <Button asChild variant="ghost" className="mt-4 w-full"><Link href="/login"><ArrowLeft aria-hidden="true" /> Back to sign in</Link></Button>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </main>
   );
 }

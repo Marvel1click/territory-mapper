@@ -6,6 +6,17 @@ export type HouseStatus = 'not-visited' | 'nah' | 'interest' | 'return-visit' | 
 
 export type UserRole = 'overseer' | 'publisher' | 'admin';
 
+export type MembershipStatus = 'invited' | 'active' | 'suspended' | 'removed';
+
+export type VisitOutcome =
+  | 'not-home'
+  | 'contacted'
+  | 'interested'
+  | 'return-visit'
+  | 'do-not-call';
+
+export type ReplicatedCollection = 'territories' | 'houses' | 'assignments' | 'visits';
+
 export interface Congregation {
   id: string;
   name: string;
@@ -29,6 +40,9 @@ export interface Territory {
   created_at: string;
   updated_at: string;
   created_by: string;
+  version: number;
+  server_updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface House {
@@ -46,6 +60,9 @@ export interface House {
   return_visit_date?: string;
   created_at: string;
   updated_at: string;
+  version: number;
+  server_updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface Assignment {
@@ -60,9 +77,11 @@ export interface Assignment {
   due_date?: string;
   returned_at?: string;
   status: 'active' | 'returned' | 'overdue';
-  qr_token?: string;
   created_at: string;
   updated_at: string;
+  version: number;
+  server_updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface UserProfile {
@@ -77,6 +96,103 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface Membership {
+  id: string;
+  user_id: string;
+  congregation_id: string;
+  role: UserRole;
+  status: MembershipStatus;
+  joined_at?: string | null;
+  invited_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  congregation?: Pick<Congregation, 'id' | 'name'>;
+  profile?: Pick<UserProfile, 'id' | 'email' | 'full_name' | 'phone'>;
+}
+
+export interface Invite {
+  id: string;
+  congregation_id: string;
+  email: string;
+  role: UserRole;
+  expires_at: string;
+  accepted_at?: string | null;
+  revoked_at?: string | null;
+  invited_by: string;
+  created_at: string;
+}
+
+export interface Visit {
+  id: string;
+  house_id: string;
+  territory_id: string;
+  congregation_id: string;
+  visitor_id: string;
+  outcome: VisitOutcome;
+  notes?: string | null;
+  visited_at: string;
+  follow_up_at?: string | null;
+  mutation_id: string;
+  version: number;
+  server_updated_at: string;
+  deleted_at?: string | null;
+}
+
+export interface DncWarning {
+  id: string;
+  house_id: string;
+  territory_id: string;
+  coordinates: [number, number];
+  label: 'Do not call nearby';
+  warning_radius_m: number;
+}
+
+export interface SyncCheckpoint {
+  server_updated_at: string;
+  id: string;
+}
+
+export interface ReplicationDocument {
+  id: string;
+  version: number;
+  server_updated_at: string;
+  deleted_at?: string | null;
+  last_mutation_id?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ReplicationConflict {
+  id: string;
+  collection: ReplicatedCollection;
+  assumed_master: ReplicationDocument | null;
+  server_document: ReplicationDocument;
+  client_document: ReplicationDocument;
+  resolution: 'server-wins' | 'append-only' | 'reapply-required';
+}
+
+export type ApiErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'VALIDATION_FAILED'
+  | 'CONFLICT'
+  | 'RATE_LIMITED'
+  | 'ORIGIN_REJECTED'
+  | 'INVITE_EXPIRED'
+  | 'INVITE_REVOKED'
+  | 'CHECKOUT_TOKEN_INVALID'
+  | 'CHECKOUT_TOKEN_EXPIRED'
+  | 'INTERNAL_ERROR';
+
+export interface ApiError {
+  error: {
+    code: ApiErrorCode;
+    message: string;
+    details?: Record<string, string[]>;
+  };
+  requestId: string;
+}
+
 export interface SyncState {
   id: string;
   collection: string;
@@ -89,7 +205,6 @@ export interface VoiceNote {
   id: string;
   house_id: string;
   transcript: string;
-  audio_url?: string;
   created_at: string;
   created_by: string;
 }

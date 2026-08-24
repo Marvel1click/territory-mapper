@@ -1,136 +1,82 @@
 # Territory Mapper
 
-A Progressive Web App (PWA) for door-to-door ministry territory management. Built with offline-first architecture, accessibility features, and privacy-focused design.
+Territory Mapper is an invite-only, multi-tenant PWA for congregation territory planning and field work. It provides a desktop/tablet overseer workspace and a mobile-first publisher mode backed by Supabase, Mapbox, RxDB, Serwist, and Vercel.
 
-## Features
+## Product scope
 
-### Phase 1: The Bedrock ✅
-- ✅ Next.js 14 PWA with offline support
-- ✅ Mapbox GL JS integration
-- ✅ RxDB for local data storage
-- ✅ Supabase Auth with congregation isolation
-- ✅ High-contrast accessibility mode
+- Admins manage invitations, membership, roles, and status.
+- Admins and overseers draw territories, import houses, assign work, issue one-time checkout links, review visits, and export CSV/GeoJSON.
+- Publishers see only active assignments, record append-only visits, manage return visits, and work from downloaded data while offline.
+- Exact DNC addresses and notes are encrypted with AES-256-GCM and kept out of publisher IndexedDB. Publishers receive generic proximity warnings only.
+- Public self-registration, stored audio, push notifications, billing, and behavioral analytics are intentionally out of scope.
 
-### Phase 2: The Overseer Tools
-- 🚧 Territory boundary editor
-- 🚧 Assignment dashboard
-- 🚧 QR code generation for checkouts
+## Architecture
 
-### Phase 3: The Publisher Experience
-- 🚧 House-to-house tracking
-- ✅ Big Mode UI for accessibility
-- 🚧 Haptic feedback for DNC proximity
-- 🚧 Voice-to-text notes
+- **Next.js 16 App Router** for the web application and authenticated route handlers.
+- **Supabase Auth + Postgres** for identity, authoritative memberships, RLS, transactional assignment/DNC functions, and audit history.
+- **RxDB replication protocol** for user-scoped offline data, server checkpoints, idempotent visits, tombstones, retries, and conflicts.
+- **Mapbox GL** for territory boundary editing and field maps. Offline basemaps are limited to previously viewed tiles.
+- **Serwist** for the TypeScript service worker, shell precaching, update prompts, offline fallback, and cache cleanup.
+- **Vercel** for previews and production, with Core Web Vitals only through Speed Insights.
 
-### Phase 4: Sync & Polish
-- 🚧 Background sync
-- ✅ Dark mode support
-- 🚧 Glassmorphism UI
-- 🚧 AES-256 encryption for DNC addresses
+The production schema is additive in [`supabase/migrations/004_production_rebuild.sql`](supabase/migrations/004_production_rebuild.sql). Legacy metadata is read once for backfill; authorization thereafter comes from `congregation_memberships`.
 
-## Tech Stack
+## Local setup
 
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **Database**: RxDB (client-side) + Supabase (server-side)
-- **Auth**: Supabase Auth
-- **Maps**: Mapbox GL JS
-- **State**: Zustand
-- **PWA**: next-pwa
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- Supabase account
-- Mapbox account
-
-### Environment Variables
-
-Create a `.env.local` file:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# Mapbox
-NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
-
-# Encryption
-DNC_ENCRYPTION_KEY=your_secure_key
-```
-
-### Installation
+Requirements: Node.js 22, npm, Docker or Podman for local Supabase, and provider credentials for a non-production project.
 
 ```bash
-# Install dependencies
-npm install
-
-# Run development server
+cp .env.example .env.local
+npm ci
+supabase start
 npm run dev
+```
 
-# Build for production
+Required environment values:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+NEXT_PUBLIC_MAPBOX_TOKEN
+NEXT_PUBLIC_APP_URL
+DNC_ENCRYPTION_KEY_VERSION
+DNC_ENCRYPTION_KEY_V1
+```
+
+Generate a 32-byte DNC key with `openssl rand -base64 32`. Keep every referenced key version available until all records have been rotated. Never expose service-role or DNC keys through `NEXT_PUBLIC_*` variables.
+
+## Verification
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run security:audit
 npm run build
-
-# Start production server
-npm start
+supabase test db
+npm run test:e2e -- --project=chromium
 ```
 
-## Development
+Database tests require the local Supabase containers. Authenticated E2E journeys require a staging project with synthetic accounts through the `E2E_*` environment variables; they skip when those credentials are absent. Public and accessibility journeys always run.
 
-### Project Structure
+## DNC migration
 
-```
-territory-mapper/
-├── app/
-│   ├── (auth)/           # Auth routes (login, register)
-│   ├── (dashboard)/       # Protected dashboard routes
-│   ├── api/               # API routes
-│   ├── components/        # React components
-│   ├── hooks/             # Custom React hooks
-│   ├── lib/               # Utilities and configurations
-│   └── types/             # TypeScript types
-├── public/                # Static assets and PWA files
-└── supabase/              # Database migrations
+Back up the database before migration. After the additive SQL migration is applied, run the DNC migration in dry-run mode first:
+
+```bash
+npm run migrate:dnc
+npm run migrate:dnc -- --apply
 ```
 
-### Key Features
+The script encrypts, verifies by decrypting in memory, and only then masks the legacy house fields. It is restart-safe. Do not remove an old encryption key version while records still reference it.
 
-#### Offline-First Architecture
-- RxDB stores all data locally in IndexedDB
-- Automatic sync with Supabase when online
-- Background sync queue for pending changes
+## Release policy
 
-#### Accessibility
-- High contrast mode for low vision users
-- Big Mode with enlarged touch targets (≥64dp)
-- Haptic feedback for DNC proximity warnings
-- Voice-to-text for notes
-- Full keyboard navigation support
+All work lands through a feature branch and Vercel preview using a staging Supabase project with synthetic data. Production cutover requires an explicit approval after backup, migration dry run, pgTAP, browser smoke tests, and preview review. Do not point a preview at production data.
 
-#### Privacy & Security
-- Congregation-level data isolation via RLS
-- AES-256 encryption for DNC addresses
-- No tracking or analytics
-- Local-first data storage
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+See [`docs/PRODUCTION_RUNBOOK.md`](docs/PRODUCTION_RUNBOOK.md), [`docs/SECURITY.md`](docs/SECURITY.md), and [`docs/ACCESSIBILITY_CHECKLIST.md`](docs/ACCESSIBILITY_CHECKLIST.md).
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Acknowledgments
-
-Built for the ministry. Thank you to all who serve.
+MIT. See [`LICENSE`](LICENSE).

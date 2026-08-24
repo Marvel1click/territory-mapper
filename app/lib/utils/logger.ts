@@ -1,59 +1,66 @@
-/**
- * Production logging utility
- * 
- * Replaces console statements with a configurable logger
- * that can be disabled in production or set to different levels.
- */
-
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+const sensitiveKey = /address|authorization|cookie|coordinate|email|key|note|password|phone|secret|session|token/i;
+
+function safeValue(value: unknown, depth = 0): unknown {
+  if (depth > 3) return '[truncated]';
+  if (value instanceof Error) {
+    const withCode = value as Error & { code?: unknown };
+    return {
+      name: value.name,
+      ...(typeof withCode.code === 'string' ? { code: withCode.code.slice(0, 80) } : {}),
+    };
+  }
+  if (typeof value === 'string') return value.slice(0, 160);
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.slice(0, 10).map((item) => safeValue(item, depth + 1));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 20)
+        .map(([key, item]) => [
+          key,
+          sensitiveKey.test(key) ? '[redacted]' : safeValue(item, depth + 1),
+        ]),
+    );
+  }
+  return String(value).slice(0, 80);
+}
 
 class Logger {
   private shouldLog(level: LogLevel): boolean {
-    // In production, only log warnings and errors by default
-    if (typeof window === 'undefined') {
-      // Server-side: check NODE_ENV
-      if (process.env.NODE_ENV === 'production') {
-        return level === 'error' || level === 'warn';
-      }
-      return true;
-    }
-
-    // Client-side: check for custom log level config
-    const configLevel = (window as Window & { __LOG_LEVEL__?: LogLevel }).__LOG_LEVEL__;
-    if (!configLevel) {
-      // Default: only log errors in production
-      if (process.env.NODE_ENV === 'production') {
-        return level === 'error';
-      }
-      return true;
-    }
-
-    const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
-    return levels.indexOf(level) >= levels.indexOf(configLevel);
+    if (process.env.NODE_ENV === 'production') return level === 'warn' || level === 'error';
+    return true;
   }
 
-  debug(...args: unknown[]): void {
-    if (this.shouldLog('debug')) {
-      console.debug('[DEBUG]', ...args);
-    }
+  private emit(level: LogLevel, event: string, context: unknown[]): void {
+    if (!this.shouldLog(level)) return;
+    const output = JSON.stringify({
+      level,
+      event: event.slice(0, 120),
+      timestamp: new Date().toISOString(),
+      ...(context.length ? { context: context.map((item) => safeValue(item)) } : {}),
+    });
+    if (level === 'error') console.error(output);
+    else if (level === 'warn') console.warn(output);
+    else if (level === 'info') console.info(output);
+    else console.debug(output);
   }
 
-  info(...args: unknown[]): void {
-    if (this.shouldLog('info')) {
-      console.info('[INFO]', ...args);
-    }
+  debug(event: string, ...context: unknown[]): void {
+    this.emit('debug', event, context);
   }
 
-  warn(...args: unknown[]): void {
-    if (this.shouldLog('warn')) {
-      console.warn('[WARN]', ...args);
-    }
+  info(event: string, ...context: unknown[]): void {
+    this.emit('info', event, context);
   }
 
-  error(...args: unknown[]): void {
-    if (this.shouldLog('error')) {
-      console.error('[ERROR]', ...args);
-    }
+  warn(event: string, ...context: unknown[]): void {
+    this.emit('warn', event, context);
+  }
+
+  error(event: string, ...context: unknown[]): void {
+    this.emit('error', event, context);
   }
 }
 
